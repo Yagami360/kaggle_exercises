@@ -2,14 +2,11 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
-from pandas_profiling import ProfileReport
 import random
 from kaggle.api.kaggle_api_extended import KaggleApi
 
-# scikit-learn
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-
+from sklearn.model_selection import KFold
+from xgboost import XGBClassifier
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -18,7 +15,8 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
-    parser.add_argument("--val_rate", type=float, default=0.25)
+    parser.add_argument("--n_splits", type=int, default=4)
+    parser.add_argument("--n_estimators", type=int, default=20)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -40,13 +38,11 @@ if __name__ == '__main__':
     ds_train = pd.read_csv( os.path.join(args.in_dir, "train.csv" ) )
     ds_test = pd.read_csv( os.path.join(args.in_dir, "test.csv" ) )
     ds_gender_submission = pd.read_csv( os.path.join(args.in_dir, "gender_submission.csv" ) )
-    """
     if( args.debug ):
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
         print( "ds_gender_submission.head() : \n", ds_gender_submission.head() )
-    """
-
+    
     #================================
     # 前処理
     #================================
@@ -71,61 +67,84 @@ if __name__ == '__main__':
     age_std = ds_train['Age'].std()
     ds_train['Age'].fillna(np.random.randint(age_avg - age_std, age_avg + age_std), inplace=True)
     ds_test['Age'].fillna(np.random.randint(age_avg - age_std, age_avg + age_std), inplace=True)
-    """
+
     if( args.debug ):
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
-    """
 
     #================================
-    # データセットの分割
+    # submit 時の処理
     #================================
-    # 学習用データセットとテスト用データセットの設定
-    X_train = ds_train.drop('Survived', axis = 1)
-    y_train = ds_train['Survived']
-    X_test = ds_test
-    if( args.debug ):
-        print( "X_train.head() : \n", X_train.head() )
-        print( "X_test.head() : \n", X_test.head() )
-        print( "y_train.head() : \n", y_train.head() )
-        print( "len(X_train) : ", len(X_train) )
-        print( "len(X_test) : ", len(X_test) )
-        print( "len(y_train) : ", len(y_train) )
-
-    # hold-out 法で、学習用データセットを学習用と検証用に分割
-    if not( args.submit ):
-        # stratify 引数で y_train を指定することで、割合を保ったままデータセットを2つに分割
-        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=args.val_rate, random_state=args.seed, stratify=y_train)
+    if ( args.submit ):
+        #--------------------------------
+        # データセットの分割
+        #--------------------------------
+        # 学習用データセットとテスト用データセットの設定
+        X_train = ds_train.drop('Survived', axis = 1)
+        y_train = ds_train['Survived']
+        X_test = ds_test
         if( args.debug ):
-            print( "X_valid.head() : \n", X_valid.head() )
-            print( "y_valid.head() : \n", y_valid.head() )
-            print( "len(X_valid) : ", len(X_valid) )
-            print( "len(y_valid) : ", len(y_valid) )
+            print( "X_train.head() : \n", X_train.head() )
+            print( "y_train.head() : \n", y_train.head() )
+            print( "X_test.head() : \n", X_test.head() )
+            print( "len(X_train) : ", len(X_train) )
+            print( "len(y_train) : ", len(y_train) )
 
-    #================================
-    # モデルの定義
-    #================================
-    # ロジスティクス回帰
-    model = LogisticRegression( penalty='l2', solver="sag", random_state=args.seed )
+        #--------------------------------
+        # モデルの定義
+        #--------------------------------
+        model = XGBClassifier(n_estimators=args.n_estimators, random_state=args.seed)
+ 
+        #--------------------------------
+        # 学習処理
+        #--------------------------------
+        model.fit(X_train, y_train)    
 
-    #================================
-    # モデルの学習処理
-    #================================
-    model.fit(X_train, y_train)
-
-    #================================
-    # モデルの推論処理
-    #================================
-    if( args.submit ):
+        #--------------------------------
+        # 推論処理
+        #--------------------------------
         y_pred = model.predict(X_test)
         print( "y_pred : ", y_pred[:100] ) 
-    else:
-        y_pred = model.predict(X_valid)
-        print( "y_pred : ", y_pred[:100] )
 
-        # 正解率の計算
-        print( "number of classified samples", (y_valid == y_pred).sum() )
-        print( "accuracy : {:0.5f}".format( (y_valid == y_pred).sum()/len(y_pred) ) )
+    #================================
+    # 非 submit 時の処理
+    #================================
+    else:
+        # 学習用データセットとテスト用データセットの設定
+        X_train = ds_train.drop('Survived', axis = 1)
+        y_train = ds_train['Survived']
+        X_test = ds_test
+        if( args.debug ):
+            print( "len(X_train) : ", len(X_train) )
+            print( "len(y_train) : ", len(y_train) )
+
+        # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
+        kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+
+        scores_accuracy = []
+        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+            #print( "fold_id={}, train_index={}, valid_index={}".format(fold_id, train_index, valid_index) )
+            #print( "train_index={}, valid_index={}".format(train_index, valid_index) )
+            # データセットの分割
+            X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+            y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
+
+            # モデル定義
+            model = XGBClassifier(n_estimators=args.n_estimators, random_state=args.seed)
+
+            # モデルの学習処理
+            model.fit(X_train_fold, y_train_fold)
+
+            # モデルの推論処理
+            y_pred = model.predict(X_valid_fold)
+
+            # 正解率の計算
+            accuracy = (y_valid_fold == y_pred).sum()/len(y_pred)
+            scores_accuracy.append(accuracy)
+            print( "[{}] accuracy : {:.5f}".format(fold_id, accuracy) )
+
+        accuracy = np.mean(scores_accuracy)
+        print( "accuracy : {:0.5f}".format(accuracy) )
 
     #================================
     # Kaggle API での submit
@@ -141,3 +160,4 @@ if __name__ == '__main__':
         api.authenticate()
         api.competition_submit( os.path.join(args.out_dir, args.submit_file), args.submit_message, args.competition_id)
         os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )
+        

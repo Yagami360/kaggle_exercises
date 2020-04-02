@@ -2,10 +2,13 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+from pandas_profiling import ProfileReport
 import random
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+
 from xgboost import XGBClassifier
 
 if __name__ == '__main__':
@@ -43,6 +46,10 @@ if __name__ == '__main__':
         print( "ds_test.head() : \n", ds_test.head() )
         print( "ds_gender_submission.head() : \n", ds_gender_submission.head() )
     
+    # データのプロファイリング
+    #profile = ProfileReport(ds_train)
+    #profile.to_file(outputfile= os.path.join(args.ourdir, "train_csv.html") )
+
     #================================
     # 前処理
     #================================
@@ -115,8 +122,9 @@ if __name__ == '__main__':
         print( "y_pred : ", y_pred[:100] )
 
         # 正解率の計算
-        print( "number of classified samples", (y_valid == y_pred).sum() )
-        print( "accuracy", (y_valid == y_pred).sum()/len(y_pred) )
+        print( "number of classified samples : ", (y_valid == y_pred).sum() )
+        print( "accuracy : {:0.5f}".format( (y_valid == y_pred).sum()/len(y_pred) ) )
+        #print( "accuracy : ", accuracy_score(y_valid, y_pred) )
 
     #================================
     # Kaggle API での submit
