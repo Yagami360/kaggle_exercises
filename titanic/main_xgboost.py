@@ -78,21 +78,56 @@ if __name__ == '__main__':
     if( args.debug ):
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
+        
+    #================================
+    # submit 時の処理
+    #================================
+    if( args.submit ):
+        #--------------------------------
+        # データセットの分割
+        #--------------------------------
+        # 学習用データセットとテスト用データセットの設定
+        X_train = ds_train.drop('Survived', axis = 1)
+        y_train = ds_train['Survived']
+        X_test = ds_test
+        if( args.debug ):
+            print( "X_train.head() : \n", X_train.head() )
+            print( "y_train.head() : \n", y_train.head() )
+            print( "X_test.head() : \n", X_test.head() )
+            print( "len(X_train) : ", len(X_train) )
+            print( "len(y_train) : ", len(y_train) )
+
+        #--------------------------------
+        # モデルの定義
+        #--------------------------------
+        model = XGBClassifier(n_estimators=args.n_estimators, random_state=args.seed)
+ 
+        #--------------------------------
+        # 学習処理
+        #--------------------------------
+        model.fit(X_train, y_train)    
+
+        #--------------------------------
+        # 推論処理
+        #--------------------------------
+        y_pred = model.predict(X_test)
+        y_sub = y_pred
+        print( "len(y_pred) : ", len(y_pred) ) 
+        print( "y_pred : ", y_pred[:100] ) 
 
     #================================
-    # データセットの分割
+    # 非 submit 時の処理
     #================================
-    # 学習用データセットとテスト用データセットの設定
-    X_train = ds_train.drop('Survived', axis = 1)
-    y_train = ds_train['Survived']
-    X_test = ds_test
-    if( args.debug ):
-        print( "X_train.head() : \n", X_train.head() )
-        print( "y_train.head() : \n", y_train.head() )
-        print( "X_test.head() : \n", X_test.head() )
+    else:
+        # 学習用データセットとテスト用データセットの設定
+        X_train = ds_train.drop('Survived', axis = 1)
+        y_train = ds_train['Survived']
+        X_test = ds_test
+        if( args.debug ):
+            print( "X_train.head() : \n", X_train.head() )
+            print( "y_train.head() : \n", y_train.head() )
+            print( "X_test.head() : \n", X_test.head() )
 
-    # hold-out 法で、学習用データセットを学習用と検証用に分割
-    if not( args.submit ):
         # stratify 引数で y_train を指定することで、割合を保ったままデータセットを2つに分割
         X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=args.val_rate, random_state=args.seed, stratify=y_train)
         if( args.debug ):
@@ -101,25 +136,22 @@ if __name__ == '__main__':
             print( "len(X_valid) : ", len(X_valid) )
             print( "len(y_valid) : ", len(y_valid) )
 
-    #================================
-    # モデルの定義
-    #================================
-    model = XGBClassifier(n_estimators=args.n_estimators, random_state=args.seed)
+        #--------------------------------
+        # モデルの定義
+        #--------------------------------
+        model = XGBClassifier(n_estimators=args.n_estimators, random_state=args.seed)
 
-    #================================
-    # モデルの学習処理
-    #================================
-    model.fit(X_train, y_train)
+        #--------------------------------
+        # モデルの学習処理
+        #--------------------------------
+        model.fit(X_train, y_train)
 
-    #================================
-    # モデルの推論処理
-    #================================
-    if( args.submit ):
-        y_pred = model.predict(X_test)
-        print( "y_pred : ", y_pred[:100] ) 
-    else:
+        #--------------------------------
+        # モデルの推論処理
+        #--------------------------------
         y_pred = model.predict(X_valid)
         print( "y_pred : ", y_pred[:100] )
+        print( "y_pred : ", len(y_pred) )
 
         # 正解率の計算
         print( "number of classified samples : ", (y_valid == y_pred).sum() )
@@ -132,7 +164,7 @@ if __name__ == '__main__':
     if( args.submit ):
         # 提出用データに値を設定
         sub = ds_gender_submission
-        sub['Survived'] = list(map(int, y_pred))
+        sub['Survived'] = list(map(int, y_sub))
         sub.to_csv( os.path.join(args.out_dir, args.submit_file), index=False)
 
         # Kaggle-API で submit

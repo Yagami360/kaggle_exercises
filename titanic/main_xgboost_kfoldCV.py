@@ -72,87 +72,74 @@ if __name__ == '__main__':
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
 
-    #================================
-    # submit 時の処理
-    #================================
-    if ( args.submit ):
-        #--------------------------------
+    #===========================================
+    # k-fold CV による処理
+    #===========================================
+    # 学習用データセットとテスト用データセットの設定
+    X_train = ds_train.drop('Survived', axis = 1)
+    y_train = ds_train['Survived']
+    X_test = ds_test
+
+    X_train_tmp = np.zeros((len(X_train),))
+
+    if( args.debug ):
+        print( "len(X_train) : ", len(X_train) )
+        print( "len(y_train) : ", len(y_train) )
+
+    # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
+    kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+
+    y_preds = []
+    scores_accuracy = []
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        #--------------------
         # データセットの分割
-        #--------------------------------
-        # 学習用データセットとテスト用データセットの設定
-        X_train = ds_train.drop('Survived', axis = 1)
-        y_train = ds_train['Survived']
-        X_test = ds_test
-        if( args.debug ):
-            print( "X_train.head() : \n", X_train.head() )
-            print( "y_train.head() : \n", y_train.head() )
-            print( "X_test.head() : \n", X_test.head() )
-            print( "len(X_train) : ", len(X_train) )
-            print( "len(y_train) : ", len(y_train) )
+        #--------------------
+        X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+        y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
 
-        #--------------------------------
-        # モデルの定義
-        #--------------------------------
+        #--------------------
+        # モデル定義
+        #--------------------
         model = XGBClassifier(n_estimators=args.n_estimators, random_state=args.seed)
- 
-        #--------------------------------
-        # 学習処理
-        #--------------------------------
-        model.fit(X_train, y_train)    
 
-        #--------------------------------
-        # 推論処理
-        #--------------------------------
-        y_pred = model.predict(X_test)
-        print( "y_pred : ", y_pred[:100] ) 
+        #--------------------
+        # モデルの学習処理
+        #--------------------
+        model.fit(X_train_fold, y_train_fold)
 
-    #================================
-    # 非 submit 時の処理
-    #================================
-    else:
-        # 学習用データセットとテスト用データセットの設定
-        X_train = ds_train.drop('Survived', axis = 1)
-        y_train = ds_train['Survived']
-        X_test = ds_test
-        if( args.debug ):
-            print( "len(X_train) : ", len(X_train) )
-            print( "len(y_train) : ", len(y_train) )
-
-        # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-        kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
-
-        scores_accuracy = []
-        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
-            #print( "fold_id={}, train_index={}, valid_index={}".format(fold_id, train_index, valid_index) )
-            #print( "train_index={}, valid_index={}".format(train_index, valid_index) )
-            # データセットの分割
-            X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
-            y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
-
-            # モデル定義
-            model = XGBClassifier(n_estimators=args.n_estimators, random_state=args.seed)
-
-            # モデルの学習処理
-            model.fit(X_train_fold, y_train_fold)
-
-            # モデルの推論処理
+        #--------------------
+        # モデルの推論処理
+        #--------------------
+        if( args.submit ):
+            y_pred = model.predict(X_test)
+            y_preds.append(y_pred)
+            print( "[{}] len(y_pred) : {}".format(fold_id, len(y_pred)) )
+        else:
             y_pred = model.predict(X_valid_fold)
-
-            # 正解率の計算
+            print( "[{}] len(y_pred) : {}".format(fold_id, len(y_pred)) )
+    
+        # 正解率の計算
+        if( args.submit ):
+            accuracy = (y_train == y_pred).sum()/len(y_pred)
+        else:
             accuracy = (y_valid_fold == y_pred).sum()/len(y_pred)
-            scores_accuracy.append(accuracy)
-            print( "[{}] accuracy : {:.5f}".format(fold_id, accuracy) )
 
-        accuracy = np.mean(scores_accuracy)
-        print( "accuracy : {:0.5f}".format(accuracy) )
+        scores_accuracy.append(accuracy)
+        print( "[{}] accuracy : {:.5f}".format(fold_id, accuracy) )
+
+    accuracy = np.mean(scores_accuracy)
+    print( "accuracy : {:0.5f}".format(accuracy) )
 
     #================================
     # Kaggle API での submit
     #================================
+    """
     if( args.submit ):
         # 提出用データに値を設定
+        y_sub = sum(y_preds) / len(y_preds)
         sub = ds_gender_submission
-        sub['Survived'] = list(map(int, y_pred))
+        sub['Survived'] = list(map(int, y_sub))
         sub.to_csv( os.path.join(args.out_dir, args.submit_file), index=False)
 
         # Kaggle-API で submit
@@ -160,4 +147,4 @@ if __name__ == '__main__':
         api.authenticate()
         api.competition_submit( os.path.join(args.out_dir, args.submit_file), args.submit_message, args.competition_id)
         os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )
-        
+    """ 
