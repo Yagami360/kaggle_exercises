@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from pandas_profiling import ProfileReport
 import random
+import warnings
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 from sklearn.model_selection import train_test_split
@@ -12,14 +13,17 @@ from sklearn.metrics import accuracy_score
 from xgboost import XGBClassifier
 
 if __name__ == '__main__':
+    """
+    hold-out 法で学習用データセットを分割して評価
+    学習モデルは xgboost
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--in_dir", type=str, default="input")
     parser.add_argument("--out_dir", type=str, default="output")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
-    parser.add_argument("--val_rate", type=float, default=0.25)
-    parser.add_argument("--n_estimators", type=int, default=20)
+    parser.add_argument("--val_rate", type=float, default=0.25, help="hold-out 法での検証用データセットの割合")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -30,6 +34,9 @@ if __name__ == '__main__':
 
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)
+
+    # 警告非表示
+    warnings.simplefilter('ignore', DeprecationWarning)
 
     # seed 値の固定
     np.random.seed(args.seed)
@@ -100,7 +107,18 @@ if __name__ == '__main__':
         #--------------------------------
         # モデルの定義
         #--------------------------------
-        model = XGBClassifier(n_estimators=args.n_estimators, random_state=args.seed)
+        model = XGBClassifier(
+            objective = 'binary:logistic',
+            learning_rate = 0.01,
+            max_depth = 10,
+            min_child_weight = 3,
+            n_estimators = 1050,
+            gamma = 0.99,
+            colsample_bytree = 0.8,
+            subsample = 0.8,
+            scale_pos_weight = 1,
+            random_state = args.seed
+        )
  
         #--------------------------------
         # 学習処理
@@ -128,7 +146,7 @@ if __name__ == '__main__':
             print( "y_train.head() : \n", y_train.head() )
             print( "X_test.head() : \n", X_test.head() )
 
-        # stratify 引数で y_train を指定することで、割合を保ったままデータセットを2つに分割
+        # stratify 引数で y_train を指定することで、y_train のデータ (0 or 1) の割合を保ったままデータセットを2つに分割
         X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=args.val_rate, random_state=args.seed, stratify=y_train)
         if( args.debug ):
             print( "X_valid.head() : \n", X_valid.head() )

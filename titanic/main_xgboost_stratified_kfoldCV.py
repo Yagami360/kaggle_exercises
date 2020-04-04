@@ -6,12 +6,12 @@ import random
 import warnings
 from kaggle.api.kaggle_api_extended import KaggleApi
 
-from sklearn.model_selection import KFold
+from sklearn.model_selection import StratifiedKFold
 from xgboost import XGBClassifier
 
 if __name__ == '__main__':
     """
-    k-fold Cross Validation で学習用データセットを分割して学習＆評価
+    stratified k-fold cross validation で学習用データセットを分割して学習＆評価
     学習モデルは xgboost
     """
     parser = argparse.ArgumentParser()
@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
     # 警告非表示
     warnings.simplefilter('ignore', DeprecationWarning)
-    
+
     # seed 値の固定
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -93,10 +93,10 @@ if __name__ == '__main__':
         print( "len(y_pred_val) : ", len(y_pred_val) )
 
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-    kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+    kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
     y_preds = []
-    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
         #--------------------
         # データセットの分割
         #--------------------
@@ -107,7 +107,6 @@ if __name__ == '__main__':
         # モデル定義
         #--------------------
         model = XGBClassifier(
-            objective = 'binary:logistic',
             learning_rate = 0.01,
             max_depth = 10,
             min_child_weight = 3,

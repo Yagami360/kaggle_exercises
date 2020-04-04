@@ -6,13 +6,15 @@ import random
 import warnings
 from kaggle.api.kaggle_api_extended import KaggleApi
 
-from sklearn.model_selection import KFold
+from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import GridSearchCV
 from xgboost import XGBClassifier
 
 if __name__ == '__main__':
     """
-    k-fold Cross Validation で学習用データセットを分割して学習＆評価
+    stratified k-fold cross validation で学習用データセットを分割して学習＆評価
     学習モデルは xgboost
+    グリッドサーチ
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--in_dir", type=str, default="input")
@@ -34,7 +36,7 @@ if __name__ == '__main__':
 
     # 警告非表示
     warnings.simplefilter('ignore', DeprecationWarning)
-    
+
     # seed 値の固定
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -79,9 +81,9 @@ if __name__ == '__main__':
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
 
-    #===========================================
-    # k-fold CV による処理
-    #===========================================
+    #==============================
+    # 学習用データセットの分割
+    #==============================
     # 学習用データセットとテスト用データセットの設定
     X_train = ds_train.drop('Survived', axis = 1)
     X_test = ds_test
@@ -93,10 +95,54 @@ if __name__ == '__main__':
         print( "len(y_pred_val) : ", len(y_pred_val) )
 
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-    kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+    kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+
+    #==============================
+    # モデルの定義
+    #==============================
+    model = XGBClassifier(random_state=args.seed)
+
+    #==============================
+    # grid search
+    #==============================
+    # グリッドサーチでチューニングパイパーパラメーター : ディクショナリ（辞書）のリストで指定
+    param_grid = {
+        'objective': ['binary:logistic'],
+        'learning_rate': [0.009, 0.01, 0.02],
+        'max_depth': [10,11,12],
+        'min_child_weight': [2,3,4],
+        'n_estimators': [950,1000,1050],
+        "gamma": [0.099, 0.100, 0.101],
+        'subsample': [0.8],
+        'colsample_bytree': [0.8],
+        "scale_pos_weight": [1],
+    }
+
+    # グリッドサーチを行う,GridSearchCV クラスのオブジェクト作成
+    gs = GridSearchCV(
+            estimator = model,          # 推定器
+            param_grid = param_grid,    # グリッドサーチの対象パラメータ
+            scoring = 'accuracy',       # 
+            cv = kf,                    # クロスバディゲーション
+            n_jobs = -1                 # 全てのCPUで並列処理
+    )
+
+    # グリッドサーチを行う
+    gs = gs.fit( X_train, y_train )
+
+    # グリッドサーチの結果を print
+    print( "sklearn.model_selection.GridSearchCV.best_score_ : \n", gs.best_score_ )        # 指定したモデルの内, 最もよいスコアを出したモデルのスコア
+    print( "sklearn.model_selection.GridSearchCV.best_params_ : \n", gs.best_params_ )      # 最もよいスコアを出したモデルのパラメータ
+    #print( "sklearn.model_selection.GridSearchCV.grid_scores_ : \n",gs.grid_scores_ )       # 全ての情報
+
+    #================================
+    # 最良モデルでの学習 & 推論
+    #================================    
+    # 最もよいスコアを出したモデルを抽出し, テストデータを評価
+    model_best = gs.best_estimator_
 
     y_preds = []
-    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
         #--------------------
         # データセットの分割
         #--------------------
@@ -104,34 +150,18 @@ if __name__ == '__main__':
         y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
 
         #--------------------
-        # モデル定義
-        #--------------------
-        model = XGBClassifier(
-            objective = 'binary:logistic',
-            learning_rate = 0.01,
-            max_depth = 10,
-            min_child_weight = 3,
-            n_estimators = 1050,
-            gamma = 0.99,
-            colsample_bytree = 0.8,
-            subsample = 0.8,
-            scale_pos_weight = 1,
-            random_state = args.seed
-        )
-
-        #--------------------
         # モデルの学習処理
         #--------------------
-        model.fit(X_train_fold, y_train_fold)
+        model_best.fit(X_train_fold, y_train_fold)
 
         #--------------------
         # モデルの推論処理
         #--------------------
-        y_pred_test = model.predict(X_test)
+        y_pred_test = model_best.predict(X_test)
         y_preds.append(y_pred_test)
         #print( "[{}] len(y_pred_test) : {}".format(fold_id, len(y_pred_test)) )
 
-        y_pred_val[valid_index] = model.predict(X_valid_fold)
+        y_pred_val[valid_index] = model_best.predict(X_valid_fold)
         #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_val)) )
     
     accuracy = (y_train == y_pred_val).sum()/len(y_pred_val)
@@ -140,13 +170,13 @@ if __name__ == '__main__':
     #================================
     # Kaggle API での submit
     #================================
-    # 提出用データに値を設定
-    y_sub = sum(y_preds) / len(y_preds)
-    sub = ds_gender_submission
-    sub['Survived'] = list(map(int, y_sub))
-    sub.to_csv( os.path.join(args.out_dir, args.submit_file), index=False)
-
     if( args.submit ):
+        # 提出用データに値を設定
+        y_sub = sum(y_preds) / len(y_preds)
+        sub = ds_gender_submission
+        sub['Survived'] = list(map(int, y_sub))
+        sub.to_csv( os.path.join(args.out_dir, args.submit_file), index=False)
+
         # Kaggle-API で submit
         api = KaggleApi()
         api.authenticate()
