@@ -7,30 +7,90 @@ import warnings
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 from sklearn.model_selection import StratifiedKFold
-from sklearn.model_selection import GridSearchCV
 from xgboost import XGBClassifier
+import optuna
 
-# XGBoost のデフォルトハイパーパラメーター（グリッドサーチ用）
-params_xgboost = {
-    'booster': ['gbtree'],
-    'objective': ['binary:logistic'],
-    "learning_rate" : [0.01],                         # ハイパーパラメーターのチューニング時は 0.1 で固定  
-    "n_estimators" : [1000,1050,2000],
-    'max_depth': [6],                         # 3 ~ 9 : 一様分布に従う。1刻み
-    'min_child_weight': [0.1],           # 0.1 ~ 10.0 : 対数が一様分布に従う
-    'subsample': [0.6],                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'colsample_bytree': [0.6],            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'gamma': [0.001, 0.01],                       # 1e-8 ~ 1.0 : 対数が一様分布に従う
-    'alpha': [0.0],                       # デフォルト値としておく。余裕があれば変更
-    'reg_lambda': [1.0],                  # デフォルト値としておく。余裕があれば変更
-    'random_state': [71],
-}
+
+def objective_wrapper(args, X_train, y_train):
+    """
+    objective に trial 以外の引数を指定可能にするためのラッパーメソッド
+    """
+    def objective(trial):
+        #--------------------------------------------
+        # ベイズ最適化でのチューニングパイパーパラメーター
+        #--------------------------------------------
+        params = {
+            'booster': trial.suggest_categorical('booster', ['gbtree']),
+            'objective': trial.suggest_categorical('objective', ['binary:logistic']),
+            "learning_rate" : trial.suggest_loguniform("learning_rate", 1e-8, 0.01),                      # ハイパーパラメーターのチューニング時は固定  
+            "n_estimators" : trial.suggest_int("n_estimators", 950, 1050),                                # 
+            'max_depth': trial.suggest_int("max_depth", 3, 9),                                            # 3 ~ 9 : 一様分布に従う。1刻み
+            'min_child_weight': trial.suggest_loguniform('min_child_weight', 0.1, 10.0),                  # 0.1 ~ 10.0 : 対数が一様分布に従う
+            'subsample': trial.suggest_discrete_uniform('subsample', 0.6, 0.95, 0.05),                    # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+            'colsample_bytree': trial.suggest_discrete_uniform('colsample_bytree', 0.6, 0.95, 0.05),      # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+            'gamma': trial.suggest_loguniform("gamma", 1e-8, 1.0),                                        # 1e-8 ~ 1.0 : 対数が一様分布に従う
+            'alpha': trial.suggest_float("alpha", 0.0, 0.0),                                              # デフォルト値としておく。余裕があれば変更
+            'reg_lambda': trial.suggest_float("reg_lambda", 1.0, 1.0),                                         # デフォルト値としておく。余裕があれば変更
+            'random_state': trial.suggest_int("random_state", 71, 71),
+        }
+
+        #--------------------------------------------
+        # stratified k-fold CV での評価
+        #--------------------------------------------
+        # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
+        kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+
+        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
+            #--------------------
+            # データセットの分割
+            #--------------------
+            X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+            y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
+
+            #--------------------
+            # モデルの定義
+            #--------------------
+            model = XGBClassifier()
+
+            #--------------------
+            # モデルの学習処理
+            #--------------------
+            model.fit(X_train_fold, y_train_fold)
+
+            #--------------------
+            # モデルの推論処理
+            #--------------------
+            y_pred_val[valid_index] = model.predict(X_valid_fold)
+            #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_val)) )
+        
+        accuracy = (y_train == y_pred_val).sum()/len(y_pred_val)
+
+        """
+        #--------------------------------------------
+        # データセット分割なしでの評価
+        #--------------------------------------------
+        # モデルの定義
+        model = XGBClassifier()
+
+        # モデルの学習処理
+        model.fit(X_train, y_train)
+
+        # 推論処理
+        y_pred = model.predict(X_train)
+
+        # 最良モデルの判断基準となるスコア
+        accuracy = (y_train == y_pred).sum()/len(y_pred)
+        """
+
+        return accuracy
+
+    return objective
 
 if __name__ == '__main__':
     """
     stratified k-fold cross validation で学習用データセットを分割して学習＆評価
     学習モデルは xgboost
-    グリッドサーチ
+    Optuna によるハイパーパラメーターのチューニング
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--in_dir", type=str, default="input")
@@ -39,6 +99,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
+    parser.add_argument("--n_trials", type=int, default=100, help="Optuna での試行回数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -110,39 +171,19 @@ if __name__ == '__main__':
         print( "len(y_train) : ", len(y_train) )
         print( "len(y_pred_val) : ", len(y_pred_val) )
 
-    # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-    kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
-
     #==============================
-    # モデルの定義
+    # Optuna によるハイパーパラメーターのチューニング
     #==============================
-    model = XGBClassifier()
-
-    #==============================
-    # grid search
-    #==============================
-    # グリッドサーチを行う,GridSearchCV クラスのオブジェクト作成
-    gs = GridSearchCV(
-            estimator = model,              # 推定器
-            param_grid = params_xgboost,    # グリッドサーチの対象パラメータ
-            scoring = 'accuracy',           # 
-            cv = kf,                        # クロスバディゲーション
-            n_jobs = -1                     # 全てのCPUで並列処理
-    )
-
-    # グリッドサーチを行う
-    gs = gs.fit( X_train, y_train )
-
-    # グリッドサーチの結果を print
-    print( "sklearn.model_selection.GridSearchCV.best_score_ : \n", gs.best_score_ )        # 指定したモデルの内, 最もよいスコアを出したモデルのスコア
-    print( "sklearn.model_selection.GridSearchCV.best_params_ : \n", gs.best_params_ )      # 最もよいスコアを出したモデルのパラメータ
-    #print( "sklearn.model_selection.GridSearchCV.grid_scores_ : \n",gs.grid_scores_ )       # 全ての情報
-
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective_wrapper(args, X_train,y_train), n_trials=args.n_trials)
+    print('best params : ', study.best_params)
+    #print('best best_trial : ', study.best_trial)
+    
     #================================
     # 最良モデルでの学習 & 推論
     #================================    
-    # 最もよいスコアを出したモデルを抽出し, テストデータを評価
-    model_best = gs.best_estimator_
+    # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
+    kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
     y_preds = []
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
@@ -151,6 +192,24 @@ if __name__ == '__main__':
         #--------------------
         X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
         y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
+
+        #--------------------
+        # モデルの定義
+        #--------------------
+        model_best = XGBClassifier(
+            booster = study.best_params['booster'],
+            objective = study.best_params['objective'],
+            learning_rate = study.best_params['learning_rate'],
+            n_estimators = study.best_params['n_estimators'],
+            max_depth = study.best_params['max_depth'],
+            min_child_weight = study.best_params['min_child_weight'],
+            subsample = study.best_params['subsample'],
+            colsample_bytree = study.best_params['colsample_bytree'],
+            gamma = study.best_params['gamma'],
+            alpha = study.best_params['alpha'],
+            reg_lambda = study.best_params['reg_lambda'],
+            random_state = study.best_params['random_state']            
+        )
 
         #--------------------
         # モデルの学習処理

@@ -19,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument("--val_rate", type=float, default=0.25)
-    parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()

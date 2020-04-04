@@ -12,6 +12,22 @@ from sklearn.metrics import accuracy_score
 
 from xgboost import XGBClassifier
 
+# XGBoost のデフォルトハイパーパラメーター
+params_xgboost = {
+    'booster': 'gbtree',
+    'objective': 'binary:logistic',
+    "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
+    "n_estimators" : 1050,
+    'max_depth': 5,                     # 3 ~ 9 : 一様分布に従う。1刻み
+    'min_child_weight': 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う
+    'subsample': 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+    'colsample_bytree': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+    'gamma': 0.0,                       # 1e-8 ~ 1.0 : 対数が一様分布に従う
+    'alpha': 0.0,                       # デフォルト値としておく。余裕があれば変更
+    'reg_lambda': 1.0,                  # デフォルト値としておく。余裕があれば変更
+    'random_state': 71,
+}
+
 if __name__ == '__main__':
     """
     hold-out 法で学習用データセットを分割して評価
@@ -24,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument("--val_rate", type=float, default=0.25, help="hold-out 法での検証用データセットの割合")
-    parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
@@ -108,16 +124,18 @@ if __name__ == '__main__':
         # モデルの定義
         #--------------------------------
         model = XGBClassifier(
-            objective = 'binary:logistic',
-            learning_rate = 0.01,
-            max_depth = 10,
-            min_child_weight = 3,
-            n_estimators = 1050,
-            gamma = 0.99,
-            colsample_bytree = 0.8,
-            subsample = 0.8,
-            scale_pos_weight = 1,
-            random_state = args.seed
+            booster = params_xgboost['booster'],
+            objective = params_xgboost['objective'],
+            learning_rate = params_xgboost['learning_rate'],
+            n_estimators = params_xgboost['n_estimators'],
+            max_depth = params_xgboost['max_depth'],
+            min_child_weight = params_xgboost['min_child_weight'],
+            subsample = params_xgboost['subsample'],
+            colsample_bytree = params_xgboost['colsample_bytree'],
+            gamma = params_xgboost['gamma'],
+            alpha = params_xgboost['alpha'],
+            reg_lambda = params_xgboost['reg_lambda'],
+            random_state = params_xgboost['random_state']
         )
  
         #--------------------------------
@@ -157,8 +175,21 @@ if __name__ == '__main__':
         #--------------------------------
         # モデルの定義
         #--------------------------------
-        model = XGBClassifier(n_estimators=args.n_estimators, random_state=args.seed)
-
+        model = XGBClassifier(
+            booster = params_xgboost['booster'],
+            objective = params_xgboost['objective'],
+            learning_rate = params_xgboost['learning_rate'],
+            n_estimators = params_xgboost['n_estimators'],
+            max_depth = params_xgboost['max_depth'],
+            min_child_weight = params_xgboost['min_child_weight'],
+            subsample = params_xgboost['subsample'],
+            colsample_bytree = params_xgboost['colsample_bytree'],
+            gamma = params_xgboost['gamma'],
+            alpha = params_xgboost['alpha'],
+            reg_lambda = params_xgboost['reg_lambda'],
+            random_state = params_xgboost['random_state']
+        )
+        
         #--------------------------------
         # モデルの学習処理
         #--------------------------------

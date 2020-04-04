@@ -7,7 +7,10 @@ Kaggle の練習用レポジトリ
     - [Titanic: Machine Learning from Disaster](https://github.com/Yagami360/kaggle_exercises/tree/master/titanic)
 
 ## Tips
-- xxx
+
+
+- ハイパーパラメーターのチューニング
+    - ハイパーパラメーターのチューニング時のスコア計算は、計算時間削減のため k > 1 値での stratified k-fold CV ではなく k=1 での k-fold CV で行う。決定したベストモデルでの最終的なスコア計算は、stratified k-fold CV で行う方法もある。
 
 
 ## 参考文献
