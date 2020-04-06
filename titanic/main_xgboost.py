@@ -34,8 +34,8 @@ if __name__ == '__main__':
     学習モデルは xgboost
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--in_dir", type=str, default="input")
-    parser.add_argument("--out_dir", type=str, default="output")
+    parser.add_argument("--in_dir", type=str, default="datasets/input")
+    parser.add_argument("--out_dir", type=str, default="datasets/output")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")

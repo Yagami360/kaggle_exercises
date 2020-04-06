@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 import os
 import argparse
 import numpy as np
@@ -7,7 +8,19 @@ import warnings
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 from sklearn.model_selection import StratifiedKFold
+
+# models
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC                             # 
+from sklearn.ensemble import BaggingClassifier          # バギング
+from sklearn.ensemble import AdaBoostClassifier         # AdaBoost
+from sklearn.ensemble import RandomForestClassifier     # 
 from xgboost import XGBClassifier
+
+from models import EnsembleModelClassifier
+
 
 # XGBoost のデフォルトハイパーパラメーター
 params_xgboost = {
@@ -122,7 +135,7 @@ if __name__ == '__main__':
         #--------------------
         # モデル定義
         #--------------------
-        model = XGBClassifier(
+        xgboost = XGBClassifier(
             booster = params_xgboost['booster'],
             objective = params_xgboost['objective'],
             learning_rate = params_xgboost['learning_rate'],
@@ -135,6 +148,63 @@ if __name__ == '__main__':
             alpha = params_xgboost['alpha'],
             reg_lambda = params_xgboost['reg_lambda'],
             random_state = params_xgboost['random_state']
+        )
+
+        kNN = KNeighborsClassifier(
+                n_neighbors = 5,
+                p = 2,
+                metric = 'minkowski'
+            )
+
+        svm = SVC( 
+                kernel = 'rbf',     # rbf : RFBカーネルでのカーネルトリックを指定
+                gamma = 10.0,       # RFBカーネル関数のγ値
+                C = 0.1,            # C-SVM の C 値
+                random_state = args.seed,   #
+                probability = True  # 学習後の predict_proba method による予想確率を有効にする
+        )
+
+        forest = RandomForestClassifier(
+                    criterion = "gini",     # 不純度関数 [purity]
+                    bootstrap = True,       # 決定木の構築に、ブートストラップサンプルを使用するか否か（default:True）
+                    n_estimators = 1001,    # 弱識別器（決定木）の数
+                    n_jobs = -1,            # The number of jobs to run in parallel for both fit and predict ( -1 : 全てのCPUコアで並列計算)
+                    random_state = args.seed,       #
+                    oob_score = True        # Whether to use out-of-bag samples to estimate the generalization accuracy.(default=False)
+                )
+
+        decition_tree = DecisionTreeClassifier(
+                            criterion = 'entropy',       # 不純度として, 交差エントロピー
+                            max_depth = None,            # None : If None, then nodes are expanded until all leaves are pure or until all leaves contain less than min_samples_split samples.(default=None)
+                            random_state = args.seed
+                        )
+
+        bagging = BaggingClassifier(
+                    base_estimator = decition_tree,   # 弱識別器をして決定木を設定
+                    n_estimators = 1001,              # バギングを構成する弱識別器の数
+                    max_samples = 1.0,                # The number of samples to draw from X to train each base estimator.
+                                                      # If float, then draw max_samples * X.shape[0] samples.
+                                                      # base_estimator に設定した弱識別器の内, 使用するサンプルの割合
+                                                      # 
+                    max_features = 1.0,               # The number of features to draw from X to train each base estimator.
+                                                        # If float, then draw max_features * X.shape[1] features.
+                    bootstrap = True,                 # ブートストラップサンプリングを行う 
+                    bootstrap_features = False,       #
+                    n_jobs = -1, 
+                    random_state = args.seed
+                )
+        
+        ada = AdaBoostClassifier(
+                base_estimator = decition_tree,       # 弱識別器をして決定木を設定
+                n_estimators = 1001,                  # バギングを構成する弱識別器の数 
+                learning_rate = 0.01,                 # 
+                random_state = args.seed              #
+            )
+
+        model = EnsembleModelClassifier(
+            classifiers  = [ xgboost, kNN, svm, forest, bagging, ada ],
+            weights = [0.75, 0.25, 0.0, 0.25, 0.25, 0.25 ],
+            vote_method = "majority_vote",
         )
 
         #--------------------
