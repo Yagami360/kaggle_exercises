@@ -4,10 +4,18 @@ Kaggle の練習用レポジトリ
 ## Competitions
 
 - テーブルコンペ
-    - [Titanic: Machine Learning from Disaster](https://github.com/Yagami360/kaggle_exercises/tree/master/titanic)
-    - [House Prices: Advanced Regression Techniques](https://github.com/Yagami360/kaggle_exercises/tree/master/house-prices-advanced-regression-techniques)
+    - 分類
+        - [Titanic: Machine Learning from Disaster](https://github.com/Yagami360/kaggle_exercises/tree/master/titanic)
+    - 回帰
+        - [House Prices: Advanced Regression Techniques](https://github.com/Yagami360/kaggle_exercises/tree/master/house-prices-advanced-regression-techniques)
     - Restaurant Revenue Prediction
     - Home Credit Default Risk
+
+- 画像系コンペ
+    - PetFinder.my Adoption Prediction
+
+- 自然言語系コンペ
+    - xxx
 
 ## Tips
 
@@ -16,7 +24,15 @@ Kaggle の練習用レポジトリ
     - ハイパーパラメーターのチューニング時のスコア計算は、計算時間削減のため k > 1 値での stratified k-fold CV ではなく k=1 での k-fold CV で行う。決定したベストモデルでの最終的なスコア計算は、stratified k-fold CV で行う方法もある。
 
 - 特徴抽出
-    - XGBoost の `feature_importances_` で確認可能
+    - とりあえず、回帰 or 分類対象と強い相関のある特徴を把握することが重要
+        - XGBoost の `feature_importances_` で確認可能
+
+- 評価
+    - StratifiedKFold は、テストデータに含まれる各クラスの割合を、学習データに含まれる各クラスの割合とほぼ同じにする CV であり、回帰タスクのように target 値が連続値となるようなケースでは無効。回帰タスクでは通常の k-fold を使用。
+
+- その他
+    - 回帰対象の確率分布が正規分布に従っていないとモデルの推論精度が低下するので、対数変換などで正規分布に従うようにする。（例：House Prices の SalePrice）
+
 
 ## 参考文献
 - [Kaggleで勝つデータ分析の技術](https://github.com/ghmagazine/kagglebook)
