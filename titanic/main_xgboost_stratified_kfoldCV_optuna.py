@@ -25,7 +25,7 @@ def objective_wrapper(args, X_train, y_train):
             'booster': trial.suggest_categorical('booster', ['gbtree']),
             'objective': trial.suggest_categorical('objective', ['binary:logistic']),
             "learning_rate" : trial.suggest_loguniform("learning_rate", 1e-8, 0.01),                      # ハイパーパラメーターのチューニング時は固定  
-            "n_estimators" : trial.suggest_int("n_estimators", 950, 1050),                                # 
+            "n_estimators" : trial.suggest_int("n_estimators", 950, 1100),                                # 
             'max_depth': trial.suggest_int("max_depth", 3, 9),                                            # 3 ~ 9 : 一様分布に従う。1刻み
             'min_child_weight': trial.suggest_loguniform('min_child_weight', 0.1, 10.0),                  # 0.1 ~ 10.0 : 対数が一様分布に従う
             'subsample': trial.suggest_discrete_uniform('subsample', 0.6, 0.95, 0.05),                    # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
@@ -40,7 +40,7 @@ def objective_wrapper(args, X_train, y_train):
         # stratified k-fold CV での評価
         #--------------------------------------------
         # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-        kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+        kf = StratifiedKFold(n_splits=args.n_splits_gs, shuffle=True, random_state=args.seed)
 
         for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
             #--------------------
@@ -52,7 +52,20 @@ def objective_wrapper(args, X_train, y_train):
             #--------------------
             # モデルの定義
             #--------------------
-            model = XGBClassifier()
+            model = XGBClassifier(
+                booster = params['booster'],
+                objective = params['objective'],
+                learning_rate = params['learning_rate'],
+                n_estimators = params['n_estimators'],
+                max_depth = params['max_depth'],
+                min_child_weight = params['min_child_weight'],
+                subsample = params['subsample'],
+                colsample_bytree = params['colsample_bytree'],
+                gamma = params['gamma'],
+                alpha = params['alpha'],
+                reg_lambda = params['reg_lambda'],
+                random_state = params['random_state']                                    
+            )
 
             #--------------------
             # モデルの学習処理
@@ -63,7 +76,6 @@ def objective_wrapper(args, X_train, y_train):
             # モデルの推論処理
             #--------------------
             y_pred_val[valid_index] = model.predict(X_valid_fold)
-            #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_val)) )
         
         accuracy = (y_train == y_pred_val).sum()/len(y_pred_val)
 
@@ -101,7 +113,8 @@ if __name__ == '__main__':
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
-    parser.add_argument("--n_trials", type=int, default=200, help="Optuna での試行回数")
+    parser.add_argument("--n_splits_gs", type=int, default=4, help="ハイパーパラメーターチューニング時の CV での学習用データセットの分割数")
+    parser.add_argument("--n_trials", type=int, default=100, help="Optuna での試行回数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')

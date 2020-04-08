@@ -12,25 +12,25 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error
-import xgboost as xgb
+import lightgbm as lgb
 
-# XGBoost のデフォルトハイパーパラメーター
-params_xgboost = {
-    'booster': 'gbtree',
-    'objective': 'reg:linear',          # 線形回帰
+# LightGBM のデフォルトハイパーパラメーター
+model_params = {
+    'task' : 'train',                   # 
+    'boosting_type': 'gbdt',
+    'objective': 'regression',          # 回帰
+    'metric': 'rmse',                   # 評価指標
     "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
-    "n_estimators" : 1050,              # 
-    'max_depth': 5,                     # 3 ~ 9 : 一様分布に従う。1刻み
-    'min_child_weight': 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う
-    'subsample': 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'colsample_bytree': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'gamma': 0.0,                       # 1e-8 ~ 1.0 : 対数が一様分布に従う
-    'alpha': 0.0,                       # デフォルト値としておく。余裕があれば変更
-    'reg_lambda': 1.0,                  # デフォルト値としておく。余裕があれば変更
-    'eval_metric': 'rmse',              # 平均2乗平方根誤差
+    "n_estimators" : 1000,              # 
+    'num_leaves': 31,                   # 
+    'min_data_in_leaf': 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う
+    'bagging_fraction': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+    'lambda_l1': 1.0,                   # デフォルト値としておく。余裕があれば変更
+    'lambda_l2': 0.0,                   # デフォルト値としておく。余裕があれば変更
     "num_boost_round": 1000,            # 試行回数
     "early_stopping_rounds": 100,       # early stopping を行う繰り返し回数
     'random_state': 71,
+    "device_type": "cpu",               # 
 }
 
 
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="house-prices-advanced-regression-techniques")
-    parser.add_argument('--train_type', choices=['train', 'fit'], default="train", help="XGBoost の学習タイプ")
+    parser.add_argument('--train_type', choices=['train', 'fit'], default="train", help="LightBGM の学習タイプ")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument('--target_norm', action='store_true')
     parser.add_argument("--seed", type=int, default=71)
@@ -174,29 +174,29 @@ if __name__ == '__main__':
         X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
         y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
 
-        # XGBoost 用データセットに変換
+        # LightBGM 用データセットに変換
         if( args.train_type == "train" ):
-            X_train_fold_dmat = xgb.DMatrix(X_train_fold, label=y_train_fold)
-            X_valid_fold_dmat = xgb.DMatrix(X_valid_fold, label=y_valid_fold)
-            X_test_dmat = xgb.DMatrix(X_test, label=y_train)
+            X_train_fold_lgb = lgb.Dataset(X_train_fold, y_train_fold )
+            X_valid_fold_lgb = lgb.Dataset(X_valid_fold, y_valid_fold)
+            X_test_lgb = lgb.Dataset(X_test, y_train)
 
         #--------------------
         # 回帰モデル定義
         #--------------------
         if( args.train_type == "fit" ):
-            model = xgb.XGBRegressor(
-                booster = params_xgboost['booster'],
-                objective = params_xgboost['objective'],
-                learning_rate = params_xgboost['learning_rate'],
-                n_estimators = params_xgboost['n_estimators'],
-                max_depth = params_xgboost['max_depth'],
-                min_child_weight = params_xgboost['min_child_weight'],
-                subsample = params_xgboost['subsample'],
-                colsample_bytree = params_xgboost['colsample_bytree'],
-                gamma = params_xgboost['gamma'],
-                alpha = params_xgboost['alpha'],
-                reg_lambda = params_xgboost['reg_lambda'],
-                random_state = params_xgboost['random_state']
+            model = lgb.LGBMRegressor(
+                boosting_type = model_params['boosting_type'],
+                objective = model_params['objective'],
+                metric = model_params['metric'],
+                learning_rate = model_params['learning_rate'],
+                n_estimators = model_params['n_estimators'],
+                num_leaves = model_params['num_leaves'],
+                min_data_in_leaf = model_params['min_data_in_leaf'],
+                bagging_fraction = model_params['bagging_fraction'],
+                lambda_l1 = model_params['lambda_l1'],
+                lambda_l2 = model_params['lambda_l2'],
+                random_state = model_params['random_state'],
+                device_type = model_params['device_type'],
             )
 
         #--------------------
@@ -204,11 +204,13 @@ if __name__ == '__main__':
         #--------------------
         if( args.train_type == "train" ):
             evals_result = {}
-            model = xgb.train(
-                params_xgboost, X_train_fold_dmat, 
-                num_boost_round = params_xgboost["num_boost_round"],
-                early_stopping_rounds = params_xgboost["early_stopping_rounds"],
-                evals = [ (X_train_fold_dmat, 'train'), (X_valid_fold_dmat, 'val') ],
+            model = lgb.train(
+                model_params, 
+                X_train_fold_lgb, 
+                valid_sets = [ X_train_fold_lgb, X_valid_fold_lgb ],
+                valid_names = ['train', 'val'],
+                num_boost_round = model_params["num_boost_round"],
+                early_stopping_rounds = model_params["early_stopping_rounds"],
                 evals_result = evals_result
             )
             evals_results.append(evals_result)
@@ -219,7 +221,7 @@ if __name__ == '__main__':
         # モデルの推論処理
         #--------------------
         if( args.train_type == "train" ):
-            y_pred_test = model.predict(X_test_dmat)
+            y_pred_test = model.predict(X_test, num_iteration=model.best_iteration)
         else:
             y_pred_test = model.predict(X_test)
 
@@ -228,12 +230,10 @@ if __name__ == '__main__':
         #print( "[{}] y_pred_test : {}".format(fold_id, y_pred_test) )
 
         if( args.train_type == "train" ):
-            y_pred_val[valid_index] = model.predict(X_valid_fold_dmat)
+            y_pred_val[valid_index] = model.predict(X_valid_fold, num_iteration=model.best_iteration)
         else:
             y_pred_val[valid_index] = model.predict(X_valid_fold)
 
-        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_val)) )
-    
     # 正解データとの平均2乗平方根誤差で評価
     if( args.target_norm ):
         rmse = np.sqrt( mean_squared_error( np.exp(y_train), np.exp(y_pred_val) ) ) 
@@ -244,7 +244,9 @@ if __name__ == '__main__':
 
     # 重要特徴量
     if( args.train_type == "train" ):
-        print( "[Feature Importances] : \n", model.get_fscore() )
+        print( "[Feature Importances]" )
+        for i, col in enumerate(X_train.columns):
+            print( "{} : {:.4f}".format( col, model.feature_importance()[i] ) )            
     else:
         print( "[Feature Importances]" )
         for i, col in enumerate(X_train.columns):
@@ -253,8 +255,8 @@ if __name__ == '__main__':
     # loss 値
     """
     if( args.train_type == "train" ):
-        print( "[train loss] eval_result :", eval_result["train"][params_xgboost["eval_metric"]] )
-        print( "[val loss] eval_result :", eval_result["val"][params_xgboost["eval_metric"]] )
+        print( "[train loss] eval_result :", eval_result["train"][model_params["eval_metric"]] )
+        print( "[val loss] eval_result :", eval_result["val"][model_params["eval_metric"]] )
     """
 
     #================================
@@ -271,24 +273,23 @@ if __name__ == '__main__':
     # loss
     if( args.train_type == "train" ):
         for i, evals_result in enumerate(evals_results):
-            plt.plot(evals_result['train'][params_xgboost["eval_metric"]], label='train / k={}'.format(i))
-            plt.plot(evals_result['val'][params_xgboost["eval_metric"]], label='val / k={}'.format(i))
+            plt.plot(evals_result['train'][model_params["metric"]], label='train / k={}'.format(i))
+            plt.plot(evals_result['val'][model_params["metric"]], label='val / k={}'.format(i))
 
         plt.xlabel('iters')
-        plt.ylabel(params_xgboost["eval_metric"])
-        plt.xlim( [0,params_xgboost["num_boost_round"]+1] )
+        plt.ylabel(model_params["metric"])
+        plt.xlim( [0,model_params["num_boost_round"]+1] )
         plt.grid()
         plt.legend()
         plt.tight_layout()
         plt.savefig( os.path.join(args.out_dir, "losees.png"), dpi = 300, bbox_inches = 'tight' )
 
     # 重要特徴量
-    _, ax = plt.subplots(figsize=(8, 16))
-    xgb.plot_importance(
+    lgb.plot_importance(
         model,
-        ax = ax,
+        figsize=(8, 16),
         importance_type = 'gain',
-        show_values = False
+        grid = True,
     )
     plt.tight_layout()
     plt.savefig( os.path.join(args.out_dir, "feature_importances.png"), dpi = 300, bbox_inches = 'tight' )
@@ -305,7 +306,7 @@ if __name__ == '__main__':
         sub['SalePrice'] = list(map(float, y_sub))
 
     sub.to_csv( os.path.join(args.out_dir, args.submit_file), index=False)
-
+    
     if( args.submit ):
         # Kaggle-API で submit
         api = KaggleApi()
