@@ -88,10 +88,8 @@ if __name__ == '__main__':
     ds_train['Fare'].fillna(np.mean(ds_train['Fare']), inplace=True)
     ds_test['Fare'].fillna(np.mean(ds_test['Fare']), inplace=True)
 
-    age_avg = ds_train['Age'].mean()
-    age_std = ds_train['Age'].std()
-    ds_train['Age'].fillna(np.random.randint(age_avg - age_std, age_avg + age_std), inplace=True)
-    ds_test['Age'].fillna(np.random.randint(age_avg - age_std, age_avg + age_std), inplace=True)
+    ds_train['Age'].fillna(np.mean(ds_train['Age']), inplace=True)
+    ds_test['Age'].fillna(np.mean(ds_test['Age']), inplace=True)
 
     if( args.debug ):
         print( "ds_train.head() : \n", ds_train.head() )

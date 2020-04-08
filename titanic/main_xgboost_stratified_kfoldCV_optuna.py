@@ -6,6 +6,8 @@ import random
 import warnings
 from kaggle.api.kaggle_api_extended import KaggleApi
 
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold
 from xgboost import XGBClassifier
 import optuna
@@ -99,7 +101,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
-    parser.add_argument("--n_trials", type=int, default=100, help="Optuna での試行回数")
+    parser.add_argument("--n_trials", type=int, default=200, help="Optuna での試行回数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -149,11 +151,19 @@ if __name__ == '__main__':
     ds_train['Fare'].fillna(np.mean(ds_train['Fare']), inplace=True)
     ds_test['Fare'].fillna(np.mean(ds_test['Fare']), inplace=True)
 
-    age_avg = ds_train['Age'].mean()
-    age_std = ds_train['Age'].std()
-    ds_train['Age'].fillna(np.random.randint(age_avg - age_std, age_avg + age_std), inplace=True)
-    ds_test['Age'].fillna(np.random.randint(age_avg - age_std, age_avg + age_std), inplace=True)
+    ds_train['Age'].fillna(np.mean(ds_train['Age']), inplace=True)
+    ds_test['Age'].fillna(np.mean(ds_test['Age']), inplace=True)
 
+    # 正規化
+    """
+    for col in ds_train.columns:
+        if( col != "Survived" and ds_train[col].dtypes in ["float16", "float32", "float64", "float128"] ):
+            scaler = StandardScaler()
+            scaler.fit( ds_train[col].values.reshape(-1,1) )
+            ds_train[col] = scaler.fit_transform( ds_train[col].values.reshape(-1,1) )
+            ds_test[col] = scaler.fit_transform( ds_test[col].values.reshape(-1,1) )
+    """
+    
     if( args.debug ):
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
