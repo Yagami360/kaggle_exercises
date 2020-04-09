@@ -20,7 +20,7 @@ class DogsVSCatsDataset(data.Dataset):
     """
     kaggle コンペ dogs-vs-cats 用データセットクラス
     """
-    def __init__(self, args, root_dir, datamode = "train", pair_list_path = "train_pairs.csv", debug = True ):
+    def __init__(self, args, root_dir, datamode = "train", debug = False ):
         super(DogsVSCatsDataset, self).__init__()
         self.args = args
 
@@ -44,6 +44,31 @@ class DogsVSCatsDataset(data.Dataset):
             print( "self.image_names[0:5] :", self.image_names[0:5])
 
         return
+
+    def __len__(self):
+        return len(self.image_names)
+
+    def __getitem__(self, index):
+        image_name = self.image_names[index]
+        raw_image = Image.open(os.path.join(self.dataset_dir, image_name)).convert('RGB')
+        image = self.transform(raw_image)
+
+        if( image_name[0:3] == "cat." ):
+            #targets = torch.eye(2)[0].float()
+            targets = torch.zeros(1).squeeze().long()
+        elif( image_name[0:3] == "dog." ):
+            #targets = torch.eye(2)[1].float()
+            targets = torch.ones(1).squeeze().long()
+        else:
+            #targets = torch.eye(2)[0].float()
+            targets = torch.zeros(1).squeeze().long()
+
+        results_dict = {
+            "image_name" : image_name,
+            "image" : image,
+            "targets" : targets,
+        }
+        return results_dict
 
 
 class DogsVSCatsDataLoader(object):

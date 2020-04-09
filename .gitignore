@@ -4,6 +4,7 @@
 *.csv
 *.html
 *.code-workspace
+*.tfevents.*
 
 _old/*
 dogs-vs-cats-redux-kernels-edition/datasets/*
