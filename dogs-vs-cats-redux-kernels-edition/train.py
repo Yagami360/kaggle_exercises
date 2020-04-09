@@ -38,7 +38,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
     parser.add_argument('--tensorboard_dir', type=str, default="tensorboard", help="TensorBoard のディレクトリ")
-    parser.add_argument('--n_steps', type=int, default=100000, help="学習ステップ数")
+    parser.add_argument('--n_steps', type=int, default=10000, help="学習ステップ数")
     parser.add_argument('--batch_size', type=int, default=64, help="バッチサイズ")
     parser.add_argument('--batch_size_test', type=int, default=4, help="test データのバッチサイズ")
     parser.add_argument('--lr', type=float, default=0.0001, help="学習率")
@@ -48,11 +48,10 @@ if __name__ == '__main__':
     parser.add_argument('--image_width', type=int, default=224, help="入力画像の幅（pixel単位）")
     parser.add_argument('--n_fmaps', type=int, default=64, help="１層目の特徴マップの枚数")
 
-    parser.add_argument('--n_display_step', type=int, default=500, help="tensorboard への表示間隔")
-    parser.add_argument('--n_display_test_step', type=int, default=5000, help="test データの tensorboard への表示間隔")
-    parser.add_argument('--n_display_val_step', type=int, default=500, help="val データの tensorboard への表示間隔")
-    parser.add_argument("--n_save_step", type=int, default=25000, help="モデルのチェックポイントの保存間隔")
-    parser.add_argument("--seed", type=int, default=8, help="乱数シード値")
+    parser.add_argument('--n_display_step', type=int, default=50, help="tensorboard への表示間隔")
+    parser.add_argument('--n_display_test_step', type=int, default=500, help="test データの tensorboard への表示間隔")
+    parser.add_argument("--n_save_step", type=int, default=1000, help="モデルのチェックポイントの保存間隔")
+    parser.add_argument("--seed", type=int, default=71, help="乱数シード値")
     parser.add_argument('--use_amp', action='store_true', help="AMP [Automatic Mixed Precision] の使用有効化")
     parser.add_argument('--opt_level', choices=['O0','O1','O2','O3'], default='O1', help='mixed precision calculation mode')
     parser.add_argument('--use_cuda_benchmark', action='store_true', help="torch.backends.cudnn.benchmark の使用有効化")
@@ -165,8 +164,6 @@ if __name__ == '__main__':
         if( args.debug and n_print > 0):
             print( "image.shape : ", image.shape )
             print( "targets.shape : ", targets.shape )
-            print( "targets.dtype : ", targets.dtype )
-            print( "targets : ", targets )
 
         #====================================================
         # 学習処理
@@ -177,8 +174,6 @@ if __name__ == '__main__':
         output = model( image )
         if( args.debug and n_print > 0 ):
             print( "output.shape :", output.shape )
-            print( "output.dtype : ", output.dtype )
-            print( "output :", output )
 
         #----------------------------------------------------
         # 損失関数を計算する

@@ -5,6 +5,8 @@
 *.html
 *.code-workspace
 *.tfevents.*
+*.out
+*.pth
 
 _old/*
 dogs-vs-cats-redux-kernels-edition/datasets/*
