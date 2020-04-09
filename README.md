@@ -12,7 +12,9 @@ Kaggle の練習用レポジトリ
     - Home Credit Default Risk
 
 - 画像系コンペ
-    - PetFinder.my Adoption Prediction
+    - Dogs vs. Cats Redux: Kernels Edition
+    - Facial Keypoints Detection
+
 
 - 自然言語系コンペ
     - xxx

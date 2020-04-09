@@ -6,3 +6,4 @@
 *.code-workspace
 
 _old/*
+dogs-vs-cats-redux-kernels-edition/datasets/*
