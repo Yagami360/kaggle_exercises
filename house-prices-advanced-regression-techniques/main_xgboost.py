@@ -242,6 +242,8 @@ if __name__ == '__main__':
 
     print( "RMSE [val] : {:0.5f}".format(rmse) )
 
+    print( "y_preds :\n", y_preds )
+
     # 重要特徴量
     if( args.train_type == "train" ):
         print( "[Feature Importances] : \n", model.get_fscore() )

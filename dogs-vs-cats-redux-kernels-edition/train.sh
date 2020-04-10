@@ -21,9 +21,10 @@ rm -rf tensorboard/${EXEP_NAME}_test
 python train.py \
     --device gpu \
     --exper_name ${EXEP_NAME} \
+    --dataset_dir datasets \
     --n_steps ${N_STEPS} \
     --n_display_step 10 --n_display_test_step 50 \
     --debug
 
-sudo poweroff
-sudo shutdown -h now
+#sudo poweroff
+#sudo shutdown -h now

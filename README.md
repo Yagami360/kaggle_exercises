@@ -11,23 +11,23 @@ Kaggle の練習用レポジトリ
     - Restaurant Revenue Prediction
     - Home Credit Default Risk
 
-- 画像系コンペ
-    - Dogs vs. Cats Redux: Kernels Edition
+- 画像コンペ
+    - [Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
     - Facial Keypoints Detection
 
-
-- 自然言語系コンペ
+- 自然言語コンペ
     - xxx
 
 ## Tips
 
-
-- ハイパーパラメーターのチューニング
-    - ハイパーパラメーターのチューニング時のスコア計算は、計算時間削減のため k > 1 値での stratified k-fold CV ではなく k=1 での k-fold CV で行う。決定したベストモデルでの最終的なスコア計算は、stratified k-fold CV で行う方法もある。
-
 - 特徴抽出
     - とりあえず、回帰 or 分類対象と強い相関のある特徴を把握することが重要
-        - XGBoost の `feature_importances_` で確認可能
+        - XGBoost の `feature_importances_` などで確認可能
+    - 相関の低い特徴量は、データセットから除外する
+
+- ハイパーパラメーターのチューニング
+    - ハイパーパラメーターのチューニングは時間がかかるので、一般的に後半で行うほうがよい。
+    - ハイパーパラメーターのチューニング時のスコア計算は、計算時間削減のため k > 1 での k-fold CV ではなく k = 1 での k-fold CV で行い、決定したベストモデルでの最終的なスコア計算は、k > 1 の k-fold CV で行う方法もある。
 
 - 評価
     - StratifiedKFold は、テストデータに含まれる各クラスの割合を、学習データに含まれる各クラスの割合とほぼ同じにする CV であり、回帰タスクのように target 値が連続値となるようなケースでは無効。回帰タスクでは通常の k-fold を使用。

@@ -5,8 +5,8 @@ import numpy as np
 from tqdm import tqdm
 import random
 import warnings
-from matplotlib import pyplot as plt
 import pandas as pd
+from matplotlib import pyplot as plt
 #from apex import amp
 from kaggle.api.kaggle_api_extended import KaggleApi
 
@@ -31,7 +31,7 @@ from utils import board_add_image, board_add_images
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="my-vton_train", help="実験名")
+    parser.add_argument("--exper_name", default="dog-vs-cat_train", help="実験名")
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
     #parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU') 
     parser.add_argument('--dataset_dir', type=str, default="datasets", help="データセットのディレクトリ")
