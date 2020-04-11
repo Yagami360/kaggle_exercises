@@ -22,11 +22,9 @@ import torchvision.transforms as transforms
 from torchvision.utils import save_image
 from tensorboardX import SummaryWriter
 
-from torchvision.models import resnet18, resnet50
-
 # 自作クラス
 from dataset import DogsVSCatsDataset, DogsVSCatsDataLoader
-from networks import ResNet18
+from networks import MyResNet18, ResNet18, ResNet50
 from utils import save_checkpoint, load_checkpoint
 from utils import board_add_image, board_add_images
 
@@ -35,19 +33,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--exper_name", default="dog-vs-cat_train", help="実験名")
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
+    parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
     #parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU') 
     parser.add_argument('--dataset_dir', type=str, default="datasets", help="データセットのディレクトリ")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
     parser.add_argument('--tensorboard_dir', type=str, default="tensorboard", help="TensorBoard のディレクトリ")
+    parser.add_argument('--network_type', choices=['my_resnet18', 'resnet18', 'resnet50'], default="resnet50", help="ネットワークの種類")
+    parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
     parser.add_argument('--n_steps', type=int, default=10000, help="学習ステップ数")
     parser.add_argument('--batch_size', type=int, default=64, help="バッチサイズ")
     parser.add_argument('--batch_size_test', type=int, default=4, help="test データのバッチサイズ")
     parser.add_argument('--lr', type=float, default=0.0001, help="学習率")
     parser.add_argument('--beta1', type=float, default=0.5, help="学習率の減衰率")
     parser.add_argument('--beta2', type=float, default=0.999, help="学習率の減衰率")
-    parser.add_argument('--network_type', choices=['my_resnet18', 'resnet18', 'resnet50'], default="resnet50", help="ネットワークの種類")
-    parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
 
     parser.add_argument('--image_height', type=int, default=224, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=224, help="入力画像の幅（pixel単位）")
@@ -121,18 +120,18 @@ if __name__ == '__main__':
     ds_train = DogsVSCatsDataset( args, args.dataset_dir, datamode = "train", enable_da = args.enable_da )
     ds_test = DogsVSCatsDataset( args, args.dataset_dir, datamode = "test", enable_da = False )
 
-    dloader_train = DogsVSCatsDataLoader(ds_train, batch_size=args.batch_size, shuffle=True )
-    dloader_test = DogsVSCatsDataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False )
+    dloader_train = DogsVSCatsDataLoader(ds_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
+    dloader_test = DogsVSCatsDataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, n_workers=args.n_workers )
 
     #======================================================================
     # モデルの構造を定義する。
     #======================================================================
     if( args.network_type == "my_resnet18" ):
-        model = ResNet18( n_in_channels = 3, n_fmaps = args.n_fmaps, n_classes = 2 ).to(device)
+        model = MyResNet18( n_in_channels = 3, n_fmaps = args.n_fmaps, n_classes = 2 ).to(device)
     elif( args.network_type == "resnet18" ):
-        model = resnet18( pretrained = args.pretrained ).to(device)
+        model = ResNet18( n_classes = 2, pretrained = args.pretrained ).to(device)
     else:
-        model = resnet50( pretrained = args.pretrained ).to(device)
+        model = ResNet50( n_classes = 2, pretrained = args.pretrained ).to(device)
 
     if( args.debug ):
         print( "model :\n", model )

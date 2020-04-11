@@ -24,7 +24,7 @@ from tensorboardX import SummaryWriter
 
 # 自作クラス
 from dataset import DogsVSCatsDataset, DogsVSCatsDataLoader
-from networks import ResNet18
+from networks import MyResNet18, ResNet18, ResNet50
 from utils import save_checkpoint, load_checkpoint
 
 
@@ -39,8 +39,12 @@ if __name__ == '__main__':
     parser.add_argument('--submit', action='store_true')
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--debug', action='store_true')
+
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
+    parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
     parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
+    parser.add_argument('--network_type', choices=['my_resnet18', 'resnet18', 'resnet50'], default="resnet50", help="ネットワークの種類")
+#    parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
     parser.add_argument('--image_height', type=int, default=224, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=224, help="入力画像の幅（pixel単位）")
     parser.add_argument('--batch_size', type=int, default=1, help="バッチサイズ")
@@ -103,16 +107,17 @@ if __name__ == '__main__':
     # データの前処理
     #======================================================================
     ds_test = DogsVSCatsDataset( args, args.dataset_dir, "test", enable_da = False )
-    dloader_test = DogsVSCatsDataLoader(ds_test, batch_size=args.batch_size, shuffle=False )
+    dloader_test = DogsVSCatsDataLoader(ds_test, batch_size=args.batch_size, shuffle=False, n_workers = args.n_workers )
 
     #======================================================================
     # モデルの構造を定義する。
     #======================================================================
-    model = ResNet18(
-            n_in_channels = 3,
-            n_fmaps = args.n_fmaps,
-            n_classes = 2
-    ).to(device)
+    if( args.network_type == "my_resnet18" ):
+        model = MyResNet18( n_in_channels = 3, n_fmaps = args.n_fmaps, n_classes = 2 ).to(device)
+    elif( args.network_type == "resnet18" ):
+        model = ResNet18( n_classes = 2, pretrained = False ).to(device)
+    else:
+        model = ResNet50( n_classes = 2, pretrained = False ).to(device)
 
     if( args.debug ):
         print( "model :\n", model )

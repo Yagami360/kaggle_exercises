@@ -2,6 +2,10 @@
 #source activate pytorch11_py36
 set -e
 
+NETWORK_TYPE=my_resnet18
+#NETWORK_TYPE=resnet18
+#NETWORK_TYPE=resnet50
+
 #LOAD_CHECKPOINTS_PATH=checkpoints/resnet18_b64_200411/step_00005001.pth
 #LOAD_CHECKPOINTS_PATH=checkpoints/resnet18_b64_200411/model_final.pth
 #LOAD_CHECKPOINTS_PATH=checkpoints/resnet18_b64_norm_200411/model_final.pth
@@ -18,6 +22,7 @@ python test.py \
     --exper_name ${EXEP_NAME} \
     --device gpu \
     --dataset_dir datasets \
+    --network_type ${NETWORK_TYPE} \
     --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH} \
     --batch_size 500 \
     --debug \

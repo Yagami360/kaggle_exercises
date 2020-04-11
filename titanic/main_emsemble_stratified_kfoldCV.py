@@ -49,7 +49,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
-    parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
+    parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')

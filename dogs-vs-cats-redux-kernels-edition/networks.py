@@ -2,9 +2,10 @@
 import os
 import torch
 import torch.nn as nn
+from torchvision.models import resnet18, resnet50
 
 #====================================
-# ResNet
+# ResNet-18
 #====================================
 class BasicBlock( nn.Module ):
     """
@@ -54,14 +55,14 @@ class BasicBlock( nn.Module ):
         return out
 
 
-class ResNet18( nn.Module ):
+class MyResNet18( nn.Module ):
     def __init__( 
         self,
         n_in_channels = 3,
         n_fmaps = 64,
         n_classes = 10
     ):
-        super( ResNet18, self ).__init__()
+        super( MyResNet18, self ).__init__()
         self.layer0 = nn.Sequential(
             nn.Conv2d( n_in_channels, n_fmaps, kernel_size=7, stride=2, padding=3 ),
             nn.BatchNorm2d( n_fmaps ),
@@ -119,4 +120,42 @@ class ResNet18( nn.Module ):
         out = self.avgpool(out) # 1x1
         out = out.view( out.size(0), -1 )
         out = self.fc_layer(out)
+        return out
+
+#====================================
+# pretrained ResNet-18
+#====================================
+class ResNet18( nn.Module ):
+    def __init__( 
+        self,
+        n_classes = 2,
+        pretrained = True,
+    ):
+        super( ResNet18, self ).__init__()
+        self.resnet18 = resnet18( pretrained )
+        # 事前学習済み resnet の出力層の n_classes 数を変更
+        self.resnet18.fc = nn.Linear( 512, n_classes )
+        return
+
+    def forward( self, x ):
+        out = self.resnet18(x)
+        return out
+
+#====================================
+# pretrained ResNet-50
+#====================================
+class ResNet50( nn.Module ):
+    def __init__( 
+        self,
+        n_classes = 2,
+        pretrained = True,
+    ):
+        super( ResNet50, self ).__init__()
+        self.resnet50 = resnet50( pretrained )
+        # 事前学習済み resnet の出力層の n_classes 数を変更
+        self.resnet50.fc = nn.Linear( 2048, n_classes )
+        return
+
+    def forward( self, x ):
+        out = self.resnet50(x)
         return out

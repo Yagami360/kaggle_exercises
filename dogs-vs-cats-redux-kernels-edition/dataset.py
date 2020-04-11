@@ -82,12 +82,13 @@ class DogsVSCatsDataset(data.Dataset):
 
 
 class DogsVSCatsDataLoader(object):
-    def __init__(self, dataset, batch_size = 1, shuffle = True, pin_memory = True):
+    def __init__(self, dataset, batch_size = 1, shuffle = True, n_workers = 4, pin_memory = True):
         super(DogsVSCatsDataLoader, self).__init__()
         self.data_loader = torch.utils.data.DataLoader(
                 dataset, 
                 batch_size = batch_size, 
                 shuffle = shuffle,
+                num_workers = n_workers,
                 pin_memory = pin_memory,
         )
 

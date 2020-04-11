@@ -4,8 +4,8 @@
 #nohup tensorboard --logdir tensorboard --port 6006 &
 set -e
 
-N_STEPS=1000
-BATCH_SIZE=64
+N_STEPS=2
+BATCH_SIZE=4
 BATCH_SIZE_TEST=256
 mkdir -p ${PWD}/_logs
 
@@ -16,14 +16,14 @@ NETWORK_TYPE=resnet50
 #-------------------
 # ResNet-18
 #-------------------
-EXEP_NAME=debug
+EXEP_NAME=debug_kfold
 #EXEP_NAME=${NETWORK_TYPE}_b${BATCH_SIZE}_200411
 #EXEP_NAME=${NETWORK_TYPE}_b${BATCH_SIZE}_norm_200411
 #EXEP_NAME=${NETWORK_TYPE}_b${BATCH_SIZE}_norm_da_200411
 rm -rf tensorboard/${EXEP_NAME}
 rm -rf tensorboard/${EXEP_NAME}_test
 
-python train.py \
+python train_kfold.py \
     --device gpu \
     --exper_name ${EXEP_NAME} \
     --dataset_dir datasets \
