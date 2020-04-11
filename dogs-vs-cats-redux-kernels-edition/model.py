@@ -16,11 +16,12 @@ import torchvision.transforms as transforms
 from networks import MyResNet18, ResNet18, ResNet50
 
 
-class ResNetClassifier( nn.Module ):
+class ImageClassifier( nn.Module ):
     """
-    ResNet の分類器
+    画像分類器
     """
     def __init__(self, device, network_type = "resnet50", n_classes = 2, pretrained = True ):
+        super( ImageClassifier, self ).__init__()
         if( network_type == "my_resnet18" ):
             self.model = MyResNet18( n_in_channels = 3, n_fmaps = 64, n_classes = 2 ).to(device)
         elif( network_type == "resnet18" ):

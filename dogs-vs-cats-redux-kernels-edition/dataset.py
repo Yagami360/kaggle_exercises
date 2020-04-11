@@ -2,6 +2,7 @@
 import os
 import argparse
 import numpy as np
+import re
 from PIL import Image, ImageDraw, ImageOps
 import cv2
 
@@ -46,7 +47,7 @@ class DogsVSCatsDataset(data.Dataset):
         self.image_height = args.image_height
         self.image_width = args.image_width
         self.dataset_dir = os.path.join( root_dir, datamode )
-        self.image_names = sorted( [f for f in os.listdir(self.dataset_dir) if f.endswith(IMG_EXTENSIONS)] )
+        self.image_names = sorted( [f for f in os.listdir(self.dataset_dir) if f.endswith(IMG_EXTENSIONS)], key=lambda s: int(re.search(r'\d+', s).group()) )
         self.debug = debug
         if( self.debug ):
             print( "self.dataset_dir :", self.dataset_dir)

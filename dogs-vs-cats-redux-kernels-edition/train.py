@@ -41,9 +41,9 @@ if __name__ == '__main__':
     parser.add_argument('--tensorboard_dir', type=str, default="tensorboard", help="TensorBoard のディレクトリ")
     parser.add_argument('--network_type', choices=['my_resnet18', 'resnet18', 'resnet50'], default="resnet50", help="ネットワークの種類")
     parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
+    parser.add_argument('--train_only_fc', action='store_true', help="出力層のみ学習対象にする")
     parser.add_argument('--n_steps', type=int, default=10000, help="学習ステップ数")
     parser.add_argument('--batch_size', type=int, default=64, help="バッチサイズ")
-    parser.add_argument('--batch_size_test', type=int, default=4, help="test データのバッチサイズ")
     parser.add_argument('--lr', type=float, default=0.0001, help="学習率")
     parser.add_argument('--beta1', type=float, default=0.5, help="学習率の減衰率")
     parser.add_argument('--beta2', type=float, default=0.999, help="学習率の減衰率")
@@ -54,7 +54,6 @@ if __name__ == '__main__':
     parser.add_argument('--enable_da', action='store_true', help="Data Augumentation を行うか否か")
 
     parser.add_argument('--n_display_step', type=int, default=50, help="tensorboard への表示間隔")
-    parser.add_argument('--n_display_test_step', type=int, default=500, help="test データの tensorboard への表示間隔")
     parser.add_argument("--n_save_step", type=int, default=1000, help="モデルのチェックポイントの保存間隔")
     parser.add_argument("--seed", type=int, default=71, help="乱数シード値")
     parser.add_argument('--use_amp', action='store_true', help="AMP [Automatic Mixed Precision] の使用有効化")
@@ -118,10 +117,7 @@ if __name__ == '__main__':
     # データの前処理
     #======================================================================
     ds_train = DogsVSCatsDataset( args, args.dataset_dir, datamode = "train", enable_da = args.enable_da )
-    ds_test = DogsVSCatsDataset( args, args.dataset_dir, datamode = "test", enable_da = False )
-
     dloader_train = DogsVSCatsDataLoader(ds_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
-    dloader_test = DogsVSCatsDataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, n_workers=args.n_workers )
 
     #======================================================================
     # モデルの構造を定義する。
@@ -131,7 +127,7 @@ if __name__ == '__main__':
     elif( args.network_type == "resnet18" ):
         model = ResNet18( n_classes = 2, pretrained = args.pretrained ).to(device)
     else:
-        model = ResNet50( n_classes = 2, pretrained = args.pretrained ).to(device)
+        model = ResNet50( n_classes = 2, pretrained = args.pretrained, train_only_fc = args.train_only_fc ).to(device)
 
     if( args.debug ):
         print( "model :\n", model )
@@ -229,45 +225,6 @@ if __name__ == '__main__':
             print( "step={}, accuracy={:.5f}".format(step+1, accuracy) )
             board_train.add_scalar('Model/accuracy_batch', accuracy, step+1)
 
-        #====================================================
-        # test loss の表示
-        #====================================================
-        if( step == 0 or ( step % args.n_display_test_step == 0 ) ):
-            pass
-            """
-            if( len(dloader_test.dataset) > dloader_test.batch_size ):
-                n_test_loop = len(dloader_test.dataset) // dloader_test.batch_size
-            else:
-                n_test_loop = len(dloader_test.dataset)
-
-            model.eval()
-            loss_total = 0
-            n_correct = 0
-            for i in range( n_test_loop ):
-                # 入力データをセット
-                inputs = dloader_test.next_batch()
-                image_name = inputs["image_name"]
-                image = inputs["image"].to(device)
-                targets = inputs["targets"].to(device)
-
-                # 学習用データをモデルに流し込む
-                with torch.no_grad():
-                    output = model( image )
-
-                # 損失関数を計算する
-                loss = loss_fn( output, targets )
-                loss_total += loss
-
-                # 正解率を計算する。
-                _, predicts = torch.max( output.data, dim = 1 )
-                n_tests += targets.size(0)
-                n_correct += ( predicts == targets ).sum().item()
-
-            board_test.add_scalar('Model/loss', (loss_total/n_test_loop), step+1)
-
-            accuracy = n_correct / n_tests
-            board_test.add_scalar('Model/accuracy', accuracy, step+1)
-            """
         #====================================================
         # モデルの保存
         #====================================================

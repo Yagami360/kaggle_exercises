@@ -8,6 +8,7 @@ import warnings
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
+from PIL import Image
 from kaggle.api.kaggle_api_extended import KaggleApi
 #from apex import amp
 
@@ -44,13 +45,14 @@ if __name__ == '__main__':
     parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
     parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
     parser.add_argument('--network_type', choices=['my_resnet18', 'resnet18', 'resnet50'], default="resnet50", help="ネットワークの種類")
-#    parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
+    parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
     parser.add_argument('--image_height', type=int, default=224, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=224, help="入力画像の幅（pixel単位）")
     parser.add_argument('--batch_size', type=int, default=1, help="バッチサイズ")
     parser.add_argument('--n_samplings', type=int, default=100000, help="サンプリング数")
     parser.add_argument('--n_fmaps', type=int, default=64, help="１層目の特徴マップの枚数")
     parser.add_argument('--enable_da', action='store_true', help="Data Augumentation を行うか否か")
+    parser.add_argument('--output_type', choices=['fixed', 'prob'], default="prob", help="主力形式（確定値 or 確率値）")
 
     parser.add_argument('--use_amp', action='store_true', help="AMP [Automatic Mixed Precision] の使用有効化")
     parser.add_argument('--opt_level', choices=['O0','O1','O2','O3'], default='O1', help='mixed precision calculation mode')
@@ -132,7 +134,7 @@ if __name__ == '__main__':
     #======================================================================
     print("Starting Test Loop...")
     y_preds = []
-    n_print = 10
+    n_print = 5
     for step, inputs in enumerate(tqdm(dloader_test.data_loader)):
         model.eval()
 
@@ -142,8 +144,10 @@ if __name__ == '__main__':
         image = inputs["image"].to(device)
         targets = inputs["targets"].to(device)
         if( args.debug and n_print > 0):
+            print( "image_name : ", image_name )
             print( "image.shape : ", image.shape )
             print( "targets.shape : ", targets.shape )
+            #save_image( image, os.path.join(args.results_dir, args.exper_name, image_name[0]) )
 
         #----------------------------------------------------
         # データをモデルに流し込む
@@ -156,21 +160,42 @@ if __name__ == '__main__':
         #----------------------------------------------------
         # 正解率を計算する。（バッチデータ）
         #----------------------------------------------------
-        # 確率値が最大のラベル 0~9 を予想ラベルとする。
-        # dim = 1 ⇒ 列方向で最大値をとる
-        # Returns : (Tensor, LongTensor)
-        _, predicts = torch.max( output.data, dim = 1 )
-        y_preds = np.hstack( (predicts.detach().cpu().numpy(), y_preds) )
+        if( args.output_type == "fixed" ):
+            # 確率値が最大のラベル 0~9 を予想ラベルとする。
+            _, predicts = torch.max( output.data, dim = 1 )
+        else:
+            # 確率値で出力
+            predicts = F.softmax(output, dim=1)[:, 1]
+
+        y_preds.append( predicts.tolist()[0] )
         if( args.debug and n_print > 0 ):
             print( "predicts.shape :", predicts.shape )
             print( "output[0]=({:.5f},{:.5f}), predicts[0]={}".format(output[0,0].item(), output[0,1].item(), predicts[0].item()) )
+            #print( "y_preds :", y_preds )
 
         n_print -= 1
         if( step >= args.n_samplings ):
             break
 
-    print( "y_preds :\n", y_preds )
-    print( "y_preds.shape : ", y_preds.shape )
+    print( "y_preds[0:10] :\n", y_preds[0:10] )
+    print( "len(y_preds) : ", len(y_preds) )
+
+    #================================
+    # 可視化処理
+    #================================
+    classes = {0: 'cat', 1: 'dog'}
+    fig, axes = plt.subplots(5, 5, figsize=(16, 20), facecolor='w')
+    for i, ax in enumerate(axes.ravel()):
+        if y_preds[i] > 0.5:
+            label = 1
+        else:
+            label = 0
+            
+        ax.set_title( '{}.jpg'.format(i+1) + " / " + classes[label])
+        img = Image.open( os.path.join(args.dataset_dir, "test", '{}.jpg'.format(i+1)) )
+        ax.imshow(img)
+
+    fig.savefig( os.path.join(args.results_dir, args.exper_name, "classification.png"), dpi = 300, bbox_inches = 'tight' )
 
     #================================
     # Kaggle API での submit

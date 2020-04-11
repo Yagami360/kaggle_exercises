@@ -47,7 +47,7 @@ if __name__ == '__main__':
     parser.add_argument('--network_type', choices=['my_resnet18', 'resnet18', 'resnet50'], default="resnet50", help="ネットワークの種類")
     parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
     parser.add_argument('--n_steps', type=int, default=10000, help="学習ステップ数")
-    parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
+    parser.add_argument("--n_splits", type=int, default=3, help="k-fold CV での学習用データセットの分割数")
     parser.add_argument('--batch_size', type=int, default=64, help="バッチサイズ")
     parser.add_argument('--batch_size_test', type=int, default=4, help="test データのバッチサイズ")
     parser.add_argument('--lr', type=float, default=0.0001, help="学習率")
@@ -104,10 +104,6 @@ if __name__ == '__main__':
     if ( os.path.exists("_debug") == False and args.debug ):
         os.mkdir( "_debug" )
 
-    # for visualation
-    board_train = SummaryWriter( log_dir = os.path.join(args.tensorboard_dir, args.exper_name) )
-    board_test = SummaryWriter( log_dir = os.path.join(args.tensorboard_dir, args.exper_name + "_test") )
-
     # seed 値の固定
     if( args.use_cuda_deterministic ):
         torch.backends.cudnn.deterministic = True
@@ -142,6 +138,10 @@ if __name__ == '__main__':
         print( "fold_id={}, train_index[0:10]={}, valid_index[0:10]={}".format(fold_id, train_index[0:10], valid_index[0:10]) )
         print( "len(train_index)={}, len(valid_index)={}".format(len(train_index), len(valid_index)) )
 
+        # for visualation
+        board_train = SummaryWriter( log_dir = os.path.join(args.tensorboard_dir, args.exper_name + "_kfold{}".format(fold_id) ) )
+        board_test = SummaryWriter( log_dir = os.path.join(args.tensorboard_dir, args.exper_name + "_kfold{}".format(fold_id) + "_test") )
+
         #======================================================================
         # モデルの構造を定義する。
         #======================================================================
@@ -173,7 +173,7 @@ if __name__ == '__main__':
         #====================================================
         # 学習処理
         #====================================================
-        print("Starting Training Loop...")
+        print("[k_fold={}] Starting Training Loop...".format(fold_id) )
         n_print = 1
         for step in tqdm( range(args.n_steps ), desc = "train steps" ):
             model.train()
@@ -285,15 +285,15 @@ if __name__ == '__main__':
             #====================================================
             # モデルの保存
             #====================================================
-            if( ( step % args.n_save_step == 0 ) ):
-                save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'step_{:08}_kfold{}.pth'.format(step+1,fold_id)) )
-                save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final_kfold{}.pth'.format(fold_id)) )
+            if( ( step+1 % args.n_save_step == 0 ) ):
+                save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'step_{:08}_k{}.pth'.format(step+1,fold_id)) )
+                save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final_k{}.pth'.format(fold_id)) )
                 print( "saved checkpoints" )
             
             n_print -= 1
 
-        save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final_kfold{}.pth').format(fold_id) )
-        print("Finished Training Loop.")
+        save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final_k{}.pth').format(fold_id) )
+        print("[k_fold={}] Finished Training Loop.".format(fold_id))
 
     #====================================================
     # モデルの推論処理（k-fold CV での各 k 値の学習済みモデルを平均化）

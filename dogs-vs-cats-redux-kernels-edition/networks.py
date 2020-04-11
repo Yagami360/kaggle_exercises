@@ -130,13 +130,38 @@ class ResNet18( nn.Module ):
         self,
         n_classes = 2,
         pretrained = True,
+        train_only_fc = False,
     ):
         super( ResNet18, self ).__init__()
         self.resnet18 = resnet18( pretrained )
+
         # 事前学習済み resnet の出力層の n_classes 数を変更
         self.resnet18.fc = nn.Linear( 512, n_classes )
+
+        # 主力層のみ学習対象にする
+        self.train_only_fc = train_only_fc
+        if( self.train_only_fc ):
+            for name, param in self.resnet50.named_parameters():
+                if name in ['fc.weight', 'fc.bias']:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
+
         return
 
+    def parameters(self):
+        params_to_train = []
+        if( self.train_only_fc ):
+            for name, param in self.resnet50.named_parameters():
+                if name in ['fc.weight', 'fc.bias']:
+                    params_to_train.append(param)
+
+        else:
+            for name, param in self.resnet50.named_parameters():
+                params_to_train.append(param)
+
+        return params_to_train
+        
     def forward( self, x ):
         out = self.resnet18(x)
         return out
@@ -149,12 +174,37 @@ class ResNet50( nn.Module ):
         self,
         n_classes = 2,
         pretrained = True,
+        train_only_fc = False,
     ):
         super( ResNet50, self ).__init__()
         self.resnet50 = resnet50( pretrained )
+
         # 事前学習済み resnet の出力層の n_classes 数を変更
         self.resnet50.fc = nn.Linear( 2048, n_classes )
+
+        # 主力層のみ学習対象にする
+        self.train_only_fc = train_only_fc
+        if( self.train_only_fc ):
+            for name, param in self.resnet50.named_parameters():
+                if name in ['fc.weight', 'fc.bias']:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
+
         return
+
+    def parameters(self):
+        params_to_train = []
+        if( self.train_only_fc ):
+            for name, param in self.resnet50.named_parameters():
+                if name in ['fc.weight', 'fc.bias']:
+                    params_to_train.append(param)
+
+        else:
+            for name, param in self.resnet50.named_parameters():
+                params_to_train.append(param)
+
+        return params_to_train
 
     def forward( self, x ):
         out = self.resnet50(x)
