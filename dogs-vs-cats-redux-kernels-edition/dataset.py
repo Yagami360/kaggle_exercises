@@ -20,18 +20,28 @@ class DogsVSCatsDataset(data.Dataset):
     """
     kaggle コンペ dogs-vs-cats 用データセットクラス
     """
-    def __init__(self, args, root_dir, datamode = "train", debug = False ):
+    def __init__(self, args, root_dir, datamode = "train", mean = (0.485, 0.456, 0.406), std = (0.229, 0.224, 0.225), enable_da = False, debug = False ):
         super(DogsVSCatsDataset, self).__init__()
         self.args = args
-
         # データをロードした後に行う各種前処理の関数を構成を指定する。
-        self.transform = transforms.Compose(
-            [
-                transforms.Resize( (args.image_height, args.image_width), interpolation=Image.LANCZOS ),
-                transforms.CenterCrop( size = (args.image_height, args.image_width) ),
-                transforms.ToTensor(),   # Tensor に変換
-            ]
-        )
+        if( enable_da ):
+            self.transform = transforms.Compose(
+                [
+                    transforms.RandomResizedCrop( (args.image_height, args.image_width), scale=(0.5, 1.0)),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),   # Tensor に変換
+                    transforms.Normalize( mean, std ),
+                ]
+            )
+        else:
+            self.transform = transforms.Compose(
+                [
+                    transforms.Resize( (args.image_height, args.image_width), interpolation=Image.LANCZOS ),
+                    transforms.CenterCrop( size = (args.image_height, args.image_width) ),
+                    transforms.ToTensor(),   # Tensor に変換
+                    transforms.Normalize( mean, std ),
+                ]
+            )
 
         self.image_height = args.image_height
         self.image_width = args.image_width
@@ -53,14 +63,14 @@ class DogsVSCatsDataset(data.Dataset):
         raw_image = Image.open(os.path.join(self.dataset_dir, image_name)).convert('RGB')
         image = self.transform(raw_image)
 
-        if( image_name[0:3] == "cat." ):
-            #targets = torch.eye(2)[0].float()
+        if( "cat." in image_name ):
+            #targets = torch.eye(2)[0].long()
             targets = torch.zeros(1).squeeze().long()
-        elif( image_name[0:3] == "dog." ):
-            #targets = torch.eye(2)[1].float()
+        elif( "dog." in image_name ):
+            #targets = torch.eye(2)[1].long()
             targets = torch.ones(1).squeeze().long()
         else:
-            #targets = torch.eye(2)[0].float()
+            #targets = torch.eye(2)[0].long()
             targets = torch.zeros(1).squeeze().long()
 
         results_dict = {

@@ -22,6 +22,8 @@ import torchvision.transforms as transforms
 from torchvision.utils import save_image
 from tensorboardX import SummaryWriter
 
+from torchvision.models import resnet18, resnet50
+
 # 自作クラス
 from dataset import DogsVSCatsDataset, DogsVSCatsDataLoader
 from networks import ResNet18
@@ -44,9 +46,13 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.0001, help="学習率")
     parser.add_argument('--beta1', type=float, default=0.5, help="学習率の減衰率")
     parser.add_argument('--beta2', type=float, default=0.999, help="学習率の減衰率")
+    parser.add_argument('--network_type', choices=['my_resnet18', 'resnet18', 'resnet50'], default="resnet50", help="ネットワークの種類")
+    parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
+
     parser.add_argument('--image_height', type=int, default=224, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=224, help="入力画像の幅（pixel単位）")
     parser.add_argument('--n_fmaps', type=int, default=64, help="１層目の特徴マップの枚数")
+    parser.add_argument('--enable_da', action='store_true', help="Data Augumentation を行うか否か")
 
     parser.add_argument('--n_display_step', type=int, default=50, help="tensorboard への表示間隔")
     parser.add_argument('--n_display_test_step', type=int, default=500, help="test データの tensorboard への表示間隔")
@@ -83,7 +89,6 @@ if __name__ == '__main__':
         device = torch.device( "cpu" )
         print( "実行デバイス :", device)
 
-
     # 各種出力ディレクトリ
     if not( os.path.exists(args.tensorboard_dir) ):
         os.mkdir(args.tensorboard_dir)
@@ -113,8 +118,8 @@ if __name__ == '__main__':
     # データセットを読み込み or 生成
     # データの前処理
     #======================================================================
-    ds_train = DogsVSCatsDataset( args, args.dataset_dir, "train" )
-    ds_test = DogsVSCatsDataset( args, args.dataset_dir, "test" )
+    ds_train = DogsVSCatsDataset( args, args.dataset_dir, datamode = "train", enable_da = args.enable_da )
+    ds_test = DogsVSCatsDataset( args, args.dataset_dir, datamode = "test", enable_da = False )
 
     dloader_train = DogsVSCatsDataLoader(ds_train, batch_size=args.batch_size, shuffle=True )
     dloader_test = DogsVSCatsDataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False )
@@ -122,11 +127,12 @@ if __name__ == '__main__':
     #======================================================================
     # モデルの構造を定義する。
     #======================================================================
-    model = ResNet18(
-            n_in_channels = 3,
-            n_fmaps = args.n_fmaps,
-            n_classes = 2
-    ).to(device)
+    if( args.network_type == "my_resnet18" ):
+        model = ResNet18( n_in_channels = 3, n_fmaps = args.n_fmaps, n_classes = 2 ).to(device)
+    elif( args.network_type == "resnet18" ):
+        model = resnet18( pretrained = args.pretrained ).to(device)
+    else:
+        model = resnet50( pretrained = args.pretrained ).to(device)
 
     if( args.debug ):
         print( "model :\n", model )
@@ -164,6 +170,7 @@ if __name__ == '__main__':
         if( args.debug and n_print > 0):
             print( "image.shape : ", image.shape )
             print( "targets.shape : ", targets.shape )
+            print( "targets : ", targets )
 
         #====================================================
         # 学習処理
@@ -199,6 +206,10 @@ if __name__ == '__main__':
             board_train.add_scalar('Model/loss', loss.item(), step+1)
             print( "step={}, loss={:.5f}".format(step+1, loss) )
 
+            board_add_image(board_train, 'input image', image, step+1, n_max_images = 4)
+            board_train.add_histogram('output[0]', output[0], step+1) 
+            print( "step={}, targets=({}), output=({:.5f},{:.5f})".format(step+1, targets[0].item(), output[0,0], output[0,1]) )
+
             #----------------------------------------------------
             # 正解率を計算する。（バッチデータ）
             #----------------------------------------------------
@@ -223,6 +234,8 @@ if __name__ == '__main__':
         # test loss の表示
         #====================================================
         if( step == 0 or ( step % args.n_display_test_step == 0 ) ):
+            pass
+            """
             if( len(dloader_test.dataset) > dloader_test.batch_size ):
                 n_test_loop = len(dloader_test.dataset) // dloader_test.batch_size
             else:
@@ -255,7 +268,7 @@ if __name__ == '__main__':
 
             accuracy = n_correct / n_tests
             board_test.add_scalar('Model/accuracy', accuracy, step+1)
-
+            """
         #====================================================
         # モデルの保存
         #====================================================

@@ -30,6 +30,7 @@ from utils import save_checkpoint, load_checkpoint
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument("--exper_name", default="dog-vs-cat_test", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
@@ -38,8 +39,6 @@ if __name__ == '__main__':
     parser.add_argument('--submit', action='store_true')
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--debug', action='store_true')
-
-    parser.add_argument("--exper_name", default="dg-vs-cat_train", help="実験名")
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
     parser.add_argument('--image_height', type=int, default=224, help="入力画像の高さ（pixel単位）")
@@ -47,6 +46,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=1, help="バッチサイズ")
     parser.add_argument('--n_samplings', type=int, default=100000, help="サンプリング数")
     parser.add_argument('--n_fmaps', type=int, default=64, help="１層目の特徴マップの枚数")
+    parser.add_argument('--enable_da', action='store_true', help="Data Augumentation を行うか否か")
+
     parser.add_argument('--use_amp', action='store_true', help="AMP [Automatic Mixed Precision] の使用有効化")
     parser.add_argument('--opt_level', choices=['O0','O1','O2','O3'], default='O1', help='mixed precision calculation mode')
     parser.add_argument('--use_cuda_benchmark', action='store_true', help="torch.backends.cudnn.benchmark の使用有効化")
@@ -58,6 +59,8 @@ if __name__ == '__main__':
 
     if not os.path.isdir(args.results_dir):
         os.mkdir(args.results_dir)
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name))
 
     if( args.debug ):
         print( "----------------------------------------------" )
@@ -99,7 +102,7 @@ if __name__ == '__main__':
     # データセットを読み込み or 生成
     # データの前処理
     #======================================================================
-    ds_test = DogsVSCatsDataset( args, args.dataset_dir, "test" )
+    ds_test = DogsVSCatsDataset( args, args.dataset_dir, "test", enable_da = False )
     dloader_test = DogsVSCatsDataLoader(ds_test, batch_size=args.batch_size, shuffle=False )
 
     #======================================================================
@@ -117,15 +120,14 @@ if __name__ == '__main__':
     # モデルを読み込む
     if not args.load_checkpoints_path == '' and os.path.exists(args.load_checkpoints_path):
         load_checkpoint(model, device, args.load_checkpoints_path )
+        print( "load check points" )
 
     #======================================================================
     # モデルの推論処理
     #======================================================================
     print("Starting Test Loop...")
-    n_tests_total = 0
-    n_correct_total = 0
     y_preds = []
-    n_print = 1
+    n_print = 10
     for step, inputs in enumerate(tqdm(dloader_test.data_loader)):
         model.eval()
 
@@ -153,28 +155,15 @@ if __name__ == '__main__':
         # dim = 1 ⇒ 列方向で最大値をとる
         # Returns : (Tensor, LongTensor)
         _, predicts = torch.max( output.data, dim = 1 )
-        #y_preds.append(predicts.detach().cpu().numpy())
-        y_preds = np.hstack( (predicts, y_preds) )
+        y_preds = np.hstack( (predicts.detach().cpu().numpy(), y_preds) )
         if( args.debug and n_print > 0 ):
             print( "predicts.shape :", predicts.shape )
-
-        # 正解数のカウント
-        n_tests = targets.size(0)
-        n_tests_total += n_tests
-
-        # ミニバッチ内で一致したラベルをカウント
-        n_correct = ( predicts == targets ).sum().item()
-        n_correct_total += n_correct
-
-        accuracy = n_correct / n_tests
-        print( "step={}, accuracy={:.5f}".format(step, accuracy) )
+            print( "output[0]=({:.5f},{:.5f}), predicts[0]={}".format(output[0,0].item(), output[0,1].item(), predicts[0].item()) )
 
         n_print -= 1
         if( step >= args.n_samplings ):
             break
 
-    accuracy_total = n_correct_total / n_tests_total
-    print( "accuracy_total={:.5f}".format(accuracy_total) )
     print( "y_preds :\n", y_preds )
     print( "y_preds.shape : ", y_preds.shape )
 
@@ -184,11 +173,10 @@ if __name__ == '__main__':
     # 提出用データに値を設定
     ds_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
     ds_submission['label'][0:len(y_preds)] = list(map(float, y_preds))
-    ds_submission.to_csv( os.path.join(args.results_dir, args.submit_file), index=False)
+    ds_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
     if( args.submit ):
         # Kaggle-API で submit
         api = KaggleApi()
         api.authenticate()
-        api.competition_submit( os.path.join(args.results_dir, args.submit_file), args.submit_message, args.competition_id)
+        api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.submit_message, args.competition_id)
         os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )
-        
