@@ -12,9 +12,11 @@ Kaggle の練習用レポジトリ
     - Home Credit Default Risk
 
 - 画像コンペ
+    - Digit Recognizer
     - [Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
+    - Deepfake Detection Challenge
     - Facial Keypoints Detection
-
+    
 - 自然言語コンペ
     - xxx
 

@@ -8,7 +8,9 @@
 *.out
 *.pth
 
-dogs-vs-cats-redux-kernels-edition/datasets/*
-house-prices-advanced-regression-techniques/datasets/*
-titanic/datasets/*
 git_pull_reset.sh
+
+titanic/datasets/*
+house-prices-advanced-regression-techniques/datasets/*
+dogs-vs-cats-redux-kernels-edition/datasets/*
+dogs-vs-cats-redux-kernels-edition/pytorch_version/results/*
