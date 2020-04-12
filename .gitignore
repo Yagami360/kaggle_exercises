@@ -8,7 +8,7 @@
 *.out
 *.pth
 
-_old/*
 dogs-vs-cats-redux-kernels-edition/datasets/*
 house-prices-advanced-regression-techniques/datasets/*
 titanic/datasets/*
+git_pull_reset.sh
