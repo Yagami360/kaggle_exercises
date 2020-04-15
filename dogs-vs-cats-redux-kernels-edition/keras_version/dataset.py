@@ -45,8 +45,10 @@ class DogsVSCatsDataset(Sequence):
         """
         __len__メソッドは 1epoch あたりのイテレーション回数。
         通常は、サンプル数をバッチサイズで割った値（の切り上げ）
+        ここでは、エポック数ではなく step 数で計測させるため 1 を返す
         """
-        return math.ceil(len(self.image_names) / self.batch_size)
+        #return math.ceil(len(self.image_names) / self.batch_size)
+        return 1
 
     def __getitem__(self, idx):
         #print( "idx : ", idx )

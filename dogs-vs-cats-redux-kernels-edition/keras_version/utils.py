@@ -14,7 +14,7 @@ from keras.callbacks import ModelCheckpoint, TensorBoard
 def save_checkpoint(model, save_path):
     model_json = model.to_json()
     open(save_path + ".json", 'w').write(model_json)
-    model.save_weights( save_path + ".h5" )
+    model.save_weights( save_path + ".hdf5" )
     return
 
 def load_checkpoint(model, checkpoint_path):

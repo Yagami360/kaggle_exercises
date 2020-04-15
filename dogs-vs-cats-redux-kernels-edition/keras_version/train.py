@@ -12,12 +12,14 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 
 # TensorFlow ライブラリ
 import tensorflow as tf
+from tensorflow.python.client import device_lib
 
 # keras
 import keras
 from keras.preprocessing import image
 from keras import optimizers
 from keras.callbacks import ModelCheckpoint, TensorBoard
+import keras.backend.tensorflow_backend as KTF
 
 # 自作クラス
 from dataset import DogsVSCatsDataset 
@@ -30,15 +32,14 @@ if __name__ == '__main__':
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
     parser.add_argument('--dataset_dir', type=str, default="../datasets", help="データセットのディレクトリ")
-    #parser.add_argument('--dataset_dir', type=str, default="/Users/sakai/GitHub/kaggle_exercises/dogs-vs-cats-redux-kernels-edition/datasets", help="データセットのディレクトリ")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
-    #parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
-    parser.add_argument('--load_checkpoints_path', type=str, default="checkpoints/dog-vs-cat_train/epoch_00000.h5", help="モデルの読み込みファイルのパス")
+    parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
+    parser.add_argument('--use_tensorboard', action='store_true', help="TensorBoard 使用")
     parser.add_argument('--tensorboard_dir', type=str, default="tensorboard", help="TensorBoard のディレクトリ")
     parser.add_argument('--network_type', choices=['resnet50'], default="resnet50", help="ネットワークの種類")
     parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
     parser.add_argument('--train_only_fc', action='store_true', help="出力層のみ学習対象にする")
-    parser.add_argument('--n_epochs', type=int, default=2, help="学習ステップ数")
+    parser.add_argument('--n_steps', type=int, default=10000, help="学習ステップ数")
     parser.add_argument('--batch_size', type=int, default=64, help="バッチサイズ")
     parser.add_argument('--lr', type=float, default=0.0001, help="学習率")
     parser.add_argument('--beta1', type=float, default=0.5, help="学習率の減衰率")
@@ -63,7 +64,8 @@ if __name__ == '__main__':
 
     # 出力ディレクトリ
     if not( os.path.exists(args.tensorboard_dir) ):
-        os.mkdir(args.tensorboard_dir)
+        if( args.use_tensorboard ):
+            os.mkdir(args.tensorboard_dir)
     if not( os.path.exists(args.save_checkpoints_dir) ):
         os.mkdir(args.save_checkpoints_dir)
     if not( os.path.exists(os.path.join(args.save_checkpoints_dir, args.exper_name)) ):
@@ -74,25 +76,23 @@ if __name__ == '__main__':
     # seed 値の固定
     np.random.seed(args.seed)
     random.seed(args.seed)
+    tf.set_random_seed(args.seed)
 
     # 警告非表示
     warnings.simplefilter('ignore', DeprecationWarning)
+    warnings.simplefilter('ignore', FutureWarning)
+    #warnings.filterwarnings('ignore')
 
     # 実行 Device の設定
-    pass
+    if( args.debug ):
+        print( "実行デバイス : \n", device_lib.list_local_devices() )
 
-    # tensorboard の出力用の call back
-    callback_board_train = TensorBoard( log_dir = os.path.join(args.tensorboard_dir, args.exper_name), histogram_freq = 1 )
-    #callback_board_test = TensorBoard( log_dir = os.path.join(args.tensorboard_dir, args.exper_name + "test"), histogram_freq = 1 )
-
-    # 各エポック終了毎のモデルのチェックポイント保存用 call back
-    callback_checkpoint = ModelCheckpoint( 
-        filepath = os.path.exists(os.path.join(args.save_checkpoints_dir, args.exper_name, "epoch_{epoch:04d}.hd5")), 
-        monitor = 'val_loss', 
-        verbose = 1, 
-        save_best_only = False,     # 精度がよくなった時だけ保存するかどうか指定。Falseの場合は毎epoch保存．
-        mode = 'auto'
-    )
+    # keras で tensorboard を使用するには、keras に session を認識させる必要がある。
+    if( args.use_tensorboard ):
+        old_session = KTF.get_session()
+        session = tf.Session('')
+        KTF.set_session(session)
+        KTF.set_learning_phase(1)
 
     #======================================================================
     # データセットを読み込みとデータの前処理
@@ -153,17 +153,38 @@ if __name__ == '__main__':
         model.summary()
 
     #======================================================================
+    # call backs の設定
+    #======================================================================
+    # 各エポック終了毎のモデルのチェックポイント保存用 call back
+    callback_checkpoint = ModelCheckpoint( 
+        filepath = os.path.join(args.save_checkpoints_dir, args.exper_name, "step_{epoch:08d}.hdf5"), 
+        monitor = 'loss', 
+        verbose = 2, 
+        save_weights_only = True,   # 
+        save_best_only = False,     # 精度がよくなった時だけ保存するかどうか指定。False の場合は毎 epoch 毎保存．
+        mode = 'auto',              # 
+        period = args.n_save_step   # 何エポックごとに保存するか
+    )
+
+    # tensorboard の出力用の call back
+    if( args.use_tensorboard ):
+        callback_board_train = TensorBoard( log_dir = os.path.join(args.tensorboard_dir, args.exper_name), write_graph  = False )
+        callbacks = [ callback_board_train, callback_checkpoint ]
+    else:
+        callbacks = [ callback_checkpoint ]
+
+    #======================================================================
     # モデルの学習処理
     #======================================================================
     model.fit_generator( 
         generator = ds_train, 
-        epochs = args.n_epochs, 
+        epochs = args.n_steps, 
         steps_per_epoch = len(ds_train),
-        verbose = 2,                        # 進行状況メッセージ出力モード
+        verbose = 1,                        # 進行状況メッセージ出力モード
         workers = args.n_workers,
         shuffle = True,
         use_multiprocessing = True,
-        callbacks = [callback_checkpoint, callback_board_train]
+        callbacks = callbacks
     )
 
     # モデルの保存
@@ -178,3 +199,7 @@ if __name__ == '__main__':
                 verbose = 1                 # 進行状況メッセージ出力モードで，0か1．
             )
     """
+
+    # session を元に戻す（tenso）
+    if( args.use_tensorboard ):
+        KTF.set_session(old_session)

@@ -53,6 +53,9 @@ class ResNet50(Model):
         return
 
     def call( self, inputs ):
+        # [To Do] 
+        # inetuned_resnet50 を fit しているので、このメソッドが call されていない
+        # このメソッドが call されるように変更したい。
         output = self.finetuned_resnet50(inputs)
-        print( "output.shape: ", output.shape )
+        #print( "output.shape: ", output.shape )
         return
