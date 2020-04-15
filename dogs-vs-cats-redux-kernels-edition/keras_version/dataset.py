@@ -7,22 +7,30 @@ import cv2
 
 # keras
 import keras
-from keras.preprocessing import image
-from keras.models import Sequential
-from keras import backend as K
+from keras.utils import Sequence
+from keras.utils import to_categorical
 
 IMG_EXTENSIONS = (
     '.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif',
     '.JPG', '.JPEG', '.PNG', '.PPM', '.BMP', '.PGM', '.TIF',
 )
 
-class DogsVSCatsDataset(Sequential):
-    def __init__(self, args, root_dir, datamode = "train", mean = (0.485, 0.456, 0.406), std = (0.229, 0.224, 0.225), enable_da = False, debug = False ):
+class DogsVSCatsDataset(Sequence):
+    def __init__(
+        self, 
+        args, 
+        root_dir, 
+        datamode = "train", 
+        image_height = 224, image_width = 224, batch_size = 64, n_classes = 2,
+        enable_da = False,
+        debug = False
+    ):
         super(DogsVSCatsDataset, self).__init__()
         self.args = args
-        self.image_height = args.image_height
-        self.image_width = args.image_width
-        self.batch_size = args.batch_size
+        self.image_height = image_height
+        self.image_width = image_width
+        self.batch_size = batch_size
+        self.n_classes = n_classes
         self.dataset_dir = os.path.join( root_dir, datamode )
         self.image_names = sorted( [f for f in os.listdir(self.dataset_dir) if f.endswith(IMG_EXTENSIONS)], key=lambda s: int(re.search(r'\d+', s).group()) )
         self.debug = debug
@@ -41,20 +49,29 @@ class DogsVSCatsDataset(Sequential):
         return math.ceil(len(self.image_names) / self.batch_size)
 
     def __getitem__(self, idx):
-        print( "idx : ", idx )
+        #print( "idx : ", idx )
         idx_start = idx * self.batch_size
         idx_last = idx_start + self.batch_size
-        image_name = self.image_names[idx]
+        image_names_batch = self.image_names[idx_start:idx_last]
+        if idx_start > len(self.image_names):
+            idx_start = len(self.image_names)
 
         # X_train
-        X_train_batch = cv2.imread( os.path.join(self.dataset_dir, image_name) )
-        X_train_batch = cv2.resize( X_train_batch, (self.image_height, self.image_width), interpolation = cv2.INTER_LANCZOS4 )  # shape = [H,W,C]
+        X_train_batch = np.zeros( (self.batch_size, self.image_height, self.image_width, 3), dtype=np.uint8 )   # shape = [N,H,W,C]
+        for i, name in enumerate(image_names_batch):
+            img = cv2.imread( os.path.join(self.dataset_dir, name) )
+            img = cv2.resize( img, (self.image_height, self.image_width), interpolation = cv2.INTER_LANCZOS4 )  # shape = [H,W,C]
+            X_train_batch[i] = img
+
+        #cv2.imwrite( "_debug/X_train.png", X_train_batch[0] )
 
         # y_train
-        if( "cat." in image_name ):
-            y_train_batch = np.zeros(1, dtype=np.uint8)
-        else:
-            y_train_batch = np.ones(1, dtype=np.uint8)
+        y_train_batch = np.zeros( (self.batch_size, self.n_classes), dtype=np.uint32 )
+        for i, name in enumerate(image_names_batch):
+            if( "cat." in name ):
+                y_train_batch[i] = to_categorical( 0, self.n_classes )
+            else:
+                y_train_batch[i] = to_categorical( 1, self.n_classes )
 
         return X_train_batch, y_train_batch
 

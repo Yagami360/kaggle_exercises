@@ -17,12 +17,10 @@ import tensorflow as tf
 import keras
 from keras.preprocessing import image
 from keras import optimizers
-from keras.callbacks import ModelCheckpoint, TensorBoard
 
 # 自作クラス
 from dataset import DogsVSCatsDataset 
 from networks import ResNet50
-from utils import save_checkpoint, load_checkpoint
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -30,15 +28,13 @@ if __name__ == '__main__':
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
     parser.add_argument('--dataset_dir', type=str, default="../datasets", help="データセットのディレクトリ")
-    #parser.add_argument('--dataset_dir', type=str, default="/Users/sakai/GitHub/kaggle_exercises/dogs-vs-cats-redux-kernels-edition/datasets", help="データセットのディレクトリ")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
-    #parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
-    parser.add_argument('--load_checkpoints_path', type=str, default="checkpoints/dog-vs-cat_train/epoch_00000.h5", help="モデルの読み込みファイルのパス")
+    parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
     parser.add_argument('--tensorboard_dir', type=str, default="tensorboard", help="TensorBoard のディレクトリ")
     parser.add_argument('--network_type', choices=['resnet50'], default="resnet50", help="ネットワークの種類")
     parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
     parser.add_argument('--train_only_fc', action='store_true', help="出力層のみ学習対象にする")
-    parser.add_argument('--n_epochs', type=int, default=2, help="学習ステップ数")
+    parser.add_argument('--n_epochs', type=int, default=10, help="学習ステップ数")
     parser.add_argument('--batch_size', type=int, default=64, help="バッチサイズ")
     parser.add_argument('--lr', type=float, default=0.0001, help="学習率")
     parser.add_argument('--beta1', type=float, default=0.5, help="学習率の減衰率")
@@ -61,64 +57,65 @@ if __name__ == '__main__':
         for key, value in vars(args).items():
             print('%s: %s' % (str(key), str(value)))
 
-    # 出力ディレクトリ
-    if not( os.path.exists(args.tensorboard_dir) ):
-        os.mkdir(args.tensorboard_dir)
-    if not( os.path.exists(args.save_checkpoints_dir) ):
-        os.mkdir(args.save_checkpoints_dir)
-    if not( os.path.exists(os.path.join(args.save_checkpoints_dir, args.exper_name)) ):
-        os.mkdir( os.path.join(args.save_checkpoints_dir, args.exper_name) )
-    if ( os.path.exists("_debug") == False and args.debug ):
-        os.mkdir( "_debug" )
+    # 警告非表示
+    warnings.simplefilter('ignore', DeprecationWarning)
+    
+    # 実行 Device の設定
+    pass
+
+    # tensorboard
+    pass
 
     # seed 値の固定
     np.random.seed(args.seed)
     random.seed(args.seed)
 
-    # 警告非表示
-    warnings.simplefilter('ignore', DeprecationWarning)
-
-    # 実行 Device の設定
-    pass
-
-    # tensorboard の出力用の call back
-    callback_board_train = TensorBoard( log_dir = os.path.join(args.tensorboard_dir, args.exper_name), histogram_freq = 1 )
-    #callback_board_test = TensorBoard( log_dir = os.path.join(args.tensorboard_dir, args.exper_name + "test"), histogram_freq = 1 )
-
-    # 各エポック終了毎のモデルのチェックポイント保存用 call back
-    callback_checkpoint = ModelCheckpoint( 
-        filepath = os.path.exists(os.path.join(args.save_checkpoints_dir, args.exper_name, "epoch_{epoch:04d}.hd5")), 
-        monitor = 'val_loss', 
-        verbose = 1, 
-        save_best_only = False,     # 精度がよくなった時だけ保存するかどうか指定。Falseの場合は毎epoch保存．
-        mode = 'auto'
-    )
-
     #======================================================================
     # データセットを読み込みとデータの前処理
     #======================================================================
-    ds_train = DogsVSCatsDataset( 
-        args = args, 
-        root_dir = args.dataset_dir, 
-        datamode =  "train",
-        image_height = args.image_height, image_width = args.image_width, batch_size = args.batch_size,
-        debug = args.debug
-    )
+    ds_train = DogsVSCatsDataset( args, args.dataset_dir, "train", debug = args.debug )
+    ds_test = DogsVSCatsDataset( args, args.dataset_dir, "test", debug = args.debug )
 
-    # 前処理 & Data Augumentaion
     """
+    train_image_path = os.path.join( args.dataset_dir, "train" )
+    train_image_names = sorted( [f for f in os.listdir(train_image_path) if f.endswith(".jpg")], key=lambda s: int(re.search(r'\d+', s).group()) )
+    print( "train_image_names[0:5] : ", train_image_names[0:5] )
+
+    # X_train
+    X_train = np.zeros( (len(train_image_names), 3, args.image_height, args.image_width), dtype=np.uint8 )
+    for i, name in enumerate(train_image_names):
+        img = cv2.imread( os.path.join(train_image_path,name) )
+        img = cv2.resize( img, (args.image_height, args.image_width), interpolation = cv2.INTER_LANCZOS4 )  # shape = [H,W,C]
+        X_train[i] = img.transpose(2,0,1)
+
+    print( "X_train.shape : ", X_train.shape )
+
+    # y_train
+    y_train = np.zeros( (len(train_image_names), 1), dtype=np.uint8 )
+    for i, name in enumerate(train_image_names):
+        if( "cat." in name ):
+            y_train[i] = 0
+        else:
+            y_train[i] = 1
+
+    print( "y_train.shape : ", y_train.shape )
+    print( "y_train[0:5] : ", y_train[0:5] )
+    """
+
+    """
+    # ImageDataGenerator を使用して Data Augumentaion
     datagen_train = image.ImageDataGenerator(
         rescale = 1.0 / 255,
         shear_range = 0.2,
         zoom_range = 0.2,
-        horizontal_flip = True,
-        preprocessing_function = None   # 正規化処理を行なう関数を指定
+        horizontal_flip = True   
     )
 
-    ds_train = datagen_train.flow(
-        ds_train,
+    ds_train = datagen_train.flow_from_directory(
+        os.path.join( args.dataset_dir, "train" ),
+        target_size = (args.image_height, args.image_width ),
         batch_size = args.batch_size,
-        seed = args.seed,
+        class_mode = 'binary'
     )
 
     print( ds_train )
@@ -135,10 +132,6 @@ if __name__ == '__main__':
         pretrained = args.pretrained,
         train_only_fc = args.train_only_fc,
     ).finetuned_resnet50
-
-    # モデルを読み込む
-    if not args.load_checkpoints_path == '' and os.path.exists(args.load_checkpoints_path):
-        load_checkpoint(model, args.load_checkpoints_path )
 
     #======================================================================
     # optimizer, loss を設定
@@ -159,15 +152,10 @@ if __name__ == '__main__':
         generator = ds_train, 
         epochs = args.n_epochs, 
         steps_per_epoch = len(ds_train),
-        verbose = 2,                        # 進行状況メッセージ出力モード
+        verbose = 1, 
         workers = args.n_workers,
-        shuffle = True,
-        use_multiprocessing = True,
-        callbacks = [callback_checkpoint, callback_board_train]
+        shuffle = True
     )
-
-    # モデルの保存
-    save_checkpoint( model, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final') )
 
     #======================================================================
     # モデルの評価

@@ -21,24 +21,38 @@ class ResNet50(Model):
         super( ResNet50, self ).__init__()
         self.train_only_fc = train_only_fc
         if( pretrained ):
-            self.resnet50 = keras.applications.ResNet50(
+            base_model = keras.applications.ResNet50(
                 weights = 'imagenet',   # 事前学習済みモデルを使用する
                 input_shape = (image_height, image_width, n_channles),
                 include_top = False     # 出力層を除外した pretrained model をインポート
             )
         else:
-            self.resnet50 = keras.applications.ResNet50(
+            base_model = keras.applications.ResNet50(
                 weights = None,
                 input_shape = (image_height, image_width, n_channles),
                 include_top = False     # 出力層を除外した pretrained model をインポート
             )
 
-        self.fc_layer = keras.layers.Dense(n_classes, activation='softmax')
+        # 出力層を置き換える
+        #self.fc_layer = Sequential()
+        #self.fc_layer.add( keras.layers.Flatten(input_shape=base_model.output_shape[1:]) )
+        #self.fc_layer.add( keras.layers.Dense(n_classes, activation='softmax') )
+        #self.finetuned_resnet50 = Model( input=base_model.input, output=self.fc_layer(base_model.output) )
+        x = base_model.output
+        x = keras.layers.GlobalAveragePooling2D()(x)
+        x = keras.layers.Dense(1024, activation='relu')(x)
+        x = keras.layers.Dense(n_classes, activation='softmax')(x)
+        self.finetuned_resnet50 = Model(inputs=base_model.input, outputs=x)
 
+        # 主力層のみ学習対象にする
+        if( self.train_only_fc ):
+            for layer in self.finetuned_resnet50.layers[:100]:
+                layer.trainable = False
+                print( layer )
+                
         return
 
     def call( self, inputs ):
-        output = self.resnet50(inputs)
+        output = self.finetuned_resnet50(inputs)
         print( "output.shape: ", output.shape )
-        output = self.fc_layer(output)
         return
