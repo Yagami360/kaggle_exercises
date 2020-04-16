@@ -22,7 +22,7 @@ from keras.callbacks import ModelCheckpoint, TensorBoard
 import keras.backend.tensorflow_backend as KTF
 
 # 自作クラス
-from dataset import DogsVSCatsDataset 
+from dataset import load_dataset, DogsVSCatsDataGen
 from networks import ResNet50
 from utils import save_checkpoint, load_checkpoint
 
@@ -59,6 +59,8 @@ if __name__ == '__main__':
         print( "実行条件" )
         print( "----------------------------------------------" )
         print( "開始時間：", datetime.now() )
+        print( "tensorflow : ", tf.__version__ )
+        print( "keras : ", keras.__version__ )
         for key, value in vars(args).items():
             print('%s: %s' % (str(key), str(value)))
 
@@ -97,7 +99,7 @@ if __name__ == '__main__':
     #======================================================================
     # データセットを読み込みとデータの前処理
     #======================================================================
-    ds_train = DogsVSCatsDataset( 
+    datagen_train = DogsVSCatsDataGen( 
         args = args, 
         root_dir = args.dataset_dir, 
         datamode =  "train",
@@ -115,14 +117,14 @@ if __name__ == '__main__':
         preprocessing_function = None   # 正規化処理を行なう関数を指定
     )
 
-    ds_train = datagen_train.flow(
-        ds_train,
+    datagen_train = datagen_train.flow(
+        datagen_train,
         batch_size = args.batch_size,
         seed = args.seed,
     )
 
-    print( ds_train )
-    print( ds_train.class_indices )
+    print( datagen_train )
+    print( datagen_train.class_indices )
     """
 
     #======================================================================
@@ -176,10 +178,10 @@ if __name__ == '__main__':
     #======================================================================
     # モデルの学習処理
     #======================================================================
-    model.fit_generator( 
-        generator = ds_train, 
+    history = model.fit_generator( 
+        generator = datagen_train, 
         epochs = args.n_steps, 
-        steps_per_epoch = len(ds_train),
+        steps_per_epoch = len(datagen_train),
         verbose = 1,                        # 進行状況メッセージ出力モード
         workers = args.n_workers,
         shuffle = True,
@@ -193,6 +195,9 @@ if __name__ == '__main__':
     #======================================================================
     # モデルの評価
     #======================================================================
+    print( history.history.keys() )
+    print( history.history['accuracy'][0:10] )
+
     """
     evals = model.evaluate( 
                 x = X_test, y = y_test, 

@@ -52,7 +52,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_samplings', type=int, default=100000, help="サンプリング数")
     parser.add_argument('--n_fmaps', type=int, default=64, help="１層目の特徴マップの枚数")
     parser.add_argument('--enable_da', action='store_true', help="Data Augumentation を行うか否か")
-    parser.add_argument('--output_type', choices=['fixed', 'prob'], default="prob", help="主力形式（確定値 or 確率値）")
+    parser.add_argument('--output_type', choices=['fixed', 'proba'], default="proba", help="主力形式（確定値 or 確率値）")
 
     parser.add_argument('--use_amp', action='store_true', help="AMP [Automatic Mixed Precision] の使用有効化")
     parser.add_argument('--opt_level', choices=['O0','O1','O2','O3'], default='O1', help='mixed precision calculation mode')

@@ -27,7 +27,7 @@ rm -rf tensorboard/${EXEP_NAME}_test
 python train.py \
     --device gpu \
     --exper_name ${EXEP_NAME} \
-    --dataset_dir datasets \
+    --dataset_dir ../datasets \
     --network_type ${NETWORK_TYPE} \
     --pretrained --train_only_fc \
     --n_steps ${N_STEPS} \

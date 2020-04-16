@@ -25,7 +25,7 @@ python test.py \
     --exper_name ${EXEP_NAME} \
     --submit_message ${EXEP_NAME} \
     --device gpu \
-    --dataset_dir datasets \
+    --dataset_dir ../datasets \
     --network_type ${NETWORK_TYPE} \
     --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH} \
     --batch_size 1 \

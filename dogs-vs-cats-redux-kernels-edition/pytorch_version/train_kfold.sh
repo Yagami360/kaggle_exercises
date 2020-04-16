@@ -25,7 +25,7 @@ rm -rf tensorboard/${EXEP_NAME}_kfold*_test
 python train_kfold.py \
     --device gpu \
     --exper_name ${EXEP_NAME} \
-    --dataset_dir datasets \
+    --dataset_dir ../datasets \
     --network_type ${NETWORK_TYPE} \
     --pretrained \
     --n_splits ${N_SPLITS} \
