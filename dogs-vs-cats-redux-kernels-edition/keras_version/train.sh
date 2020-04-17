@@ -1,6 +1,7 @@
 #!/bin/sh
 #source activate tensorflow_p36
 #nohup sh train.sh > _logs/resnet50_fc_b32__200415.out &
+#nohup sh train.sh poweroff > _logs/resnet50_fc_b32__200415.out &
 set -e
 mkdir -p ${PWD}/_logs
 
@@ -25,10 +26,13 @@ python train.py \
     --pretrained --train_only_fc \
     --n_steps ${N_STEPS} \
     --batch_size ${BATCH_SIZE} \
+    --enable_datagen \
     --n_display_step 50 \
     --debug
 
 #    --enable_da \
 
-sudo poweroff
-sudo shutdown -h now
+if [ $1 = "poweroff" ]; then
+    sudo poweroff
+    sudo shutdown -h now
+fi

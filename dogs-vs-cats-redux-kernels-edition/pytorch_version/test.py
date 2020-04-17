@@ -195,7 +195,7 @@ if __name__ == '__main__':
         img = Image.open( os.path.join(args.dataset_dir, "test", '{}.jpg'.format(i+1)) )
         ax.imshow(img)
 
-    fig.savefig( os.path.join(args.results_dir, args.exper_name, "classification.png"), dpi = 300, bbox_inches = 'tight' )
+    fig.savefig( os.path.join(args.results_dir, args.exper_name, "classification.png"), dpi = 150, bbox_inches = 'tight' )
 
     #================================
     # Kaggle API での submit

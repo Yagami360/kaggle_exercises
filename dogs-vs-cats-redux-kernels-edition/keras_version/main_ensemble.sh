@@ -9,7 +9,7 @@ EXEP_NAME=${NETWORK_TYPE}_fc_b32_200415
 #-------------------
 # 推論処理
 #-------------------
-python test.py \
+python main_ensemble.py \
     --exper_name ${EXEP_NAME} \
     --submit_message ${EXEP_NAME} \
     --device gpu \
@@ -18,7 +18,6 @@ python test.py \
     --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH} \
     --train_only_fc \
     --batch_size 1 \
-    --n_samplings 100000 \
-    --enable_datagen \
-    --debug \
-    --submit
+    --n_samplings 100 \
+    --debug
+    

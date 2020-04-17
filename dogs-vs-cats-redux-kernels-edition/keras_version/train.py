@@ -47,6 +47,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--image_height', type=int, default=224, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=224, help="入力画像の幅（pixel単位）")
+    parser.add_argument('--enable_datagen', action='store_true', help="データジェネレータを使用するか否か")
     parser.add_argument('--enable_da', action='store_true', help="Data Augumentation を行うか否か")
 
     parser.add_argument('--n_display_step', type=int, default=50, help="tensorboard への表示間隔")
@@ -99,32 +100,41 @@ if __name__ == '__main__':
     #======================================================================
     # データセットを読み込みとデータの前処理
     #======================================================================
-    datagen_train = DogsVSCatsDataGen( 
-        args = args, 
-        root_dir = args.dataset_dir, 
-        datamode =  "train",
-        image_height = args.image_height, image_width = args.image_width, batch_size = args.batch_size,
-        debug = args.debug
-    )
+    if( args.enable_datagen ):
+        datagen_train = DogsVSCatsDataGen( 
+            args = args, 
+            root_dir = args.dataset_dir, 
+            datamode =  "train",
+            image_height = args.image_height, image_width = args.image_width, batch_size = args.batch_size,
+            debug = args.debug
+        )
+    else:
+        X_train, y_train = load_dataset(
+            root_dir = args.dataset_dir, datamode =  "train",
+            image_height = args.image_height, image_width = args.image_width,
+        )
 
     # 前処理 & Data Augumentaion
     """
-    datagen_train = image.ImageDataGenerator(
-        rescale = 1.0 / 255,
-        shear_range = 0.2,
-        zoom_range = 0.2,
-        horizontal_flip = True,
-        preprocessing_function = None   # 正規化処理を行なう関数を指定
-    )
+    if( args.enable_datagen ):
+        datagen_train = image.ImageDataGenerator(
+            rescale = 1.0 / 255,
+            shear_range = 0.2,
+            zoom_range = 0.2,
+            horizontal_flip = True,
+            preprocessing_function = None   # 正規化処理を行なう関数を指定
+        )
 
-    datagen_train = datagen_train.flow(
-        datagen_train,
-        batch_size = args.batch_size,
-        seed = args.seed,
-    )
+        datagen_train = datagen_train.flow(
+            datagen_train,
+            batch_size = args.batch_size,
+            seed = args.seed,
+        )
 
-    print( datagen_train )
-    print( datagen_train.class_indices )
+        print( datagen_train )
+        print( datagen_train.class_indices )
+    else:
+        pass
     """
 
     #======================================================================
@@ -178,16 +188,27 @@ if __name__ == '__main__':
     #======================================================================
     # モデルの学習処理
     #======================================================================
-    history = model.fit_generator( 
-        generator = datagen_train, 
-        epochs = args.n_steps, 
-        steps_per_epoch = len(datagen_train),
-        verbose = 1,                        # 進行状況メッセージ出力モード
-        workers = args.n_workers,
-        shuffle = True,
-        use_multiprocessing = True,
-        callbacks = callbacks
-    )
+    if( args.enable_datagen ):
+        history = model.fit_generator( 
+            generator = datagen_train, 
+            epochs = args.n_steps, 
+            steps_per_epoch = len(datagen_train),
+            verbose = 1,
+            workers = args.n_workers,
+            shuffle = True,
+            use_multiprocessing = True,
+            callbacks = callbacks
+        )
+    else:
+        history = model.fit( 
+            x = X_train, y = y_train, 
+            epochs = args.n_steps, 
+            steps_per_epoch = 1,
+            verbose = 1,
+            workers = args.n_workers,
+            shuffle = True,
+            use_multiprocessing = True,
+            callbacks = callbacks
 
     # モデルの保存
     save_checkpoint( model, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final') )
@@ -198,13 +219,6 @@ if __name__ == '__main__':
     print( history.history.keys() )
     print( history.history['accuracy'][0:10] )
 
-    """
-    evals = model.evaluate( 
-                x = X_test, y = y_test, 
-                verbose = 1                 # 進行状況メッセージ出力モードで，0か1．
-            )
-    """
-
-    # session を元に戻す（tenso）
+    # session を元に戻す（tensorboard用）
     if( args.use_tensorboard ):
         KTF.set_session(old_session)

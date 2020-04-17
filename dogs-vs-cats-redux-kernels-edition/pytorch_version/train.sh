@@ -36,5 +36,7 @@ python train.py \
     --enable_da \
     --debug
 
-#sudo poweroff
-#sudo shutdown -h now
+if [ $1 = "poweroff" ]; then
+    sudo poweroff
+    sudo shutdown -h now
+fi

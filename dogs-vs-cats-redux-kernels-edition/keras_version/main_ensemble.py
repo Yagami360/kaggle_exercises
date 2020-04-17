@@ -23,9 +23,17 @@ from keras import optimizers
 from keras.callbacks import ModelCheckpoint, TensorBoard
 import keras.backend.tensorflow_backend as KTF
 
+# sklearn
+from sklearn.model_selection import StratifiedKFold
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+import xgboost as xgb
+
 # 自作クラス
 from dataset import load_dataset, DogsVSCatsDataGen
 from networks import ResNet50
+from models import EnsembleModelClassifier
 from utils import save_checkpoint, load_checkpoint
 
 if __name__ == '__main__':
@@ -47,10 +55,10 @@ if __name__ == '__main__':
     parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
     parser.add_argument('--train_only_fc', action='store_true', help="出力層のみ学習対象にする")
     parser.add_argument('--n_samplings', type=int, default=100000, help="サンプリング数")
+    parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
     parser.add_argument('--batch_size', type=int, default=1, help="バッチサイズ")
     parser.add_argument('--image_height', type=int, default=224, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=224, help="入力画像の幅（pixel単位）")
-    parser.add_argument('--enable_datagen', action='store_true', help="データジェネレータを使用するか否か")
     parser.add_argument('--enable_da', action='store_true', help="Data Augumentation を行うか否か")
     parser.add_argument('--output_type', choices=['fixed', 'proba'], default="proba", help="主力形式（確定値 or 確率値）")
     args = parser.parse_args()
@@ -87,38 +95,20 @@ if __name__ == '__main__':
     #======================================================================
     # データセットを読み込みとデータの前処理
     #======================================================================
-    if( args.enable_datagen ):
-        datagen_train = DogsVSCatsDataGen( 
-            args = args, 
-            root_dir = args.dataset_dir, 
-            datamode =  "train",
-            image_height = args.image_height, image_width = args.image_width, batch_size = args.batch_size,
-            debug = args.debug
-        )
+    X_train, y_train = load_dataset(
+        root_dir = args.dataset_dir, datamode =  "train",
+        image_height = args.image_height, image_width = args.image_width, n_samplings = args.n_samplings,
+    )
 
-        datagen_test = DogsVSCatsDataGen( 
-            args = args, 
-            root_dir = args.dataset_dir, 
-            datamode =  "test",
-            image_height = args.image_height, image_width = args.image_width, batch_size = args.batch_size,
-            debug = args.debug
-        )
-
-    else:
-        X_train, y_train = load_dataset(
-            root_dir = args.dataset_dir, datamode =  "train",
-            image_height = args.image_height, image_width = args.image_width, n_samplings = args.n_samplings,
-        )
-
-        X_test, _ = load_dataset(
-            root_dir = args.dataset_dir, datamode =  "test",
-            image_height = args.image_height, image_width = args.image_width, n_samplings = args.n_samplings,    
-        )
-        
-        if( args.debug ):
-            print( "X_train.shape : ", X_train.shape )
-            print( "y_train.shape : ", y_train.shape )
-            print( "X_test.shape : ", X_test.shape )
+    X_test, _ = load_dataset(
+        root_dir = args.dataset_dir, datamode =  "test",
+        image_height = args.image_height, image_width = args.image_width, n_samplings = args.n_samplings,    
+    )
+    
+    if( args.debug ):
+        print( "X_train.shape : ", X_train.shape )
+        print( "y_train.shape : ", y_train.shape )
+        print( "X_test.shape : ", X_test.shape )
 
     # 前処理
     pass
@@ -126,28 +116,70 @@ if __name__ == '__main__':
     #======================================================================
     # モデルの構造を定義する。
     #======================================================================
-    model = ResNet50(
-        image_height = args.image_height,
-        image_width = args.image_width,
-        n_channles = 3,
-        pretrained = args.pretrained,
-        train_only_fc = args.train_only_fc,
-    ).finetuned_resnet50
-
-    # モデルを読み込む
-    if not args.load_checkpoints_path == '' and os.path.exists(args.load_checkpoints_path):
-        load_checkpoint(model, args.load_checkpoints_path )
+    pass
 
     #======================================================================
-    # optimizer, loss を設定（ダミー）
+    # モデルの学習処理
     #======================================================================
-    model.compile(
-        loss = 'categorical_crossentropy',
-        optimizer = optimizers.Adam( lr = 0.0001, beta_1 = 0.5, beta_2 = 0.999 ),
-        metrics = ['accuracy']
-    )
-    if( args.debug ):
-        model.summary()
+    # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
+    kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+
+    y_preds = []
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train.argmax(1))):
+        #--------------------
+        # データセットの分割
+        #--------------------
+        X_train_fold, X_valid_fold = X_train[train_index], X_train[valid_index]
+        y_train_fold, y_valid_fold = y_train[train_index], y_train[valid_index]
+        print( "X_train_fold.shape={}, X_valid_fold.shape={}".format(X_train_fold.shape, X_valid_fold.shape ) )
+        print( "y_train_fold.shape={}, y_valid_fold.shape={}".format(y_train_fold.shape, y_valid_fold.shape ) )
+
+        #--------------------
+        # モデル定義
+        #--------------------
+        # resnet50
+        resnet_classifier = ResNet50(
+            image_height = args.image_height,
+            image_width = args.image_width,
+            n_channles = 3,
+            pretrained = args.pretrained,
+            train_only_fc = args.train_only_fc,
+        ).finetuned_resnet50
+        
+        resnet_classifier.compile( loss = 'categorical_crossentropy', optimizer = optimizers.Adam( lr = 0.0001, beta_1 = 0.5, beta_2 = 0.999 ), metrics = ['accuracy'] )
+        if not args.load_checkpoints_path == '' and os.path.exists(args.load_checkpoints_path):
+            load_checkpoint(resnet_classifier, args.load_checkpoints_path )
+
+        # その他機械学習モデル
+        knn_classifier = KNeighborsClassifier( n_neighbors = 3, p = 2, metric = 'minkowski' )
+        svm_classifier = SVC( kernel = 'rbf',gamma = 10.0, C = 0.1, random_state = args.seed, probability = True )
+        randomforest_classifier = RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True )
+
+        # アンサンブルモデル
+        ensemble_classifier = EnsembleModelClassifier(
+            classifiers  = [ resnet_classifier, knn_classifier, svm_classifier, randomforest_classifier ],
+            weights = [0.75, 0.25, 0.25, 0.25 ],
+            fitted = [ True, False, False, False ],
+            vote_method = "majority_vote",
+        )
+
+        #--------------------
+        # モデルの学習処理
+        #--------------------
+        ensemble_classifier.fit( X_train_fold.reshape(X_train_fold.shape[0],-1), y_train_fold.argmax(1) )
+
+        #--------------------
+        # モデルの推論処理
+        #--------------------
+        y_pred_test = ensemble_classifier.predict(X_test)
+        y_preds.append(y_pred_test)
+        #print( "[{}] len(y_pred_test) : {}".format(fold_id, len(y_pred_test)) )
+
+        y_pred_val[valid_index] = ensemble_classifier.predict(X_valid_fold)
+        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_val)) )
+    
+    accuracy = (y_train == y_pred_val).sum()/len(y_pred_val)
+    print( "accuracy [val] : {:0.5f}".format(accuracy) )
 
     #======================================================================
     # モデルの推論処理
@@ -162,17 +194,6 @@ if __name__ == '__main__':
     print( "loss [train] : ", evals[0] )
     print( "accuracy [train] : ", evals[1] )
     """
-
-    # 予想ラベルを推論
-    if( args.enable_datagen ):
-        predicts = model.predict_generator( datagen_test, steps = min(len(datagen_train.image_names),args.n_samplings), workers = args.n_workers, use_multiprocessing = True, verbose = 1 )    
-    else:
-        predicts = model.predict( X_test, batch_size = args.batch_size, workers = args.n_workers, use_multiprocessing = True, verbose = 1 ) 
-
-    if( args.output_type == "fixed" ):
-        y_preds = np.argmax(predicts, axis = 1)
-    else:
-        y_preds = predicts[:,1]          
 
     y_preds = list(map(float, y_preds)) # 0.999e-01 -> 0.999 の記載にする
     print( "len(y_preds)", len(y_preds) )
