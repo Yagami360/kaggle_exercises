@@ -17,6 +17,6 @@ python main_ensemble.py \
     --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH} \
     --train_only_fc \
     --batch_size 1 \
-    --n_samplings 100 \
+    --n_samplings 100000 \
     --n_splits 2 \
     --debug

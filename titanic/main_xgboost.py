@@ -41,10 +41,10 @@ if __name__ == '__main__':
     学習モデルは xgboost
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--in_dir", type=str, default="datasets/input")
-    parser.add_argument("--out_dir", type=str, default="datasets/output")
+    parser.add_argument("--exper_name", default="xgboost", help="実験名")
+    parser.add_argument("--dataset_dir", type=str, default="datasets")
+    parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
-    parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument('--train_type', choices=['train', 'fit'], default="train", help="XGBoost の学習タイプ")
     parser.add_argument("--val_rate", type=float, default=0.25, help="hold-out 法での検証用データセットの割合")
@@ -56,8 +56,10 @@ if __name__ == '__main__':
         for key, value in vars(args).items():
             print('%s: %s' % (str(key), str(value)))
 
-    if not os.path.isdir(args.out_dir):
-        os.mkdir(args.out_dir)
+    if not os.path.isdir(args.results_dir):
+        os.mkdir(args.results_dir)
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name))
 
     # 警告非表示
     warnings.simplefilter('ignore', DeprecationWarning)
@@ -69,9 +71,9 @@ if __name__ == '__main__':
     #================================
     # データセットの読み込み
     #================================
-    ds_train = pd.read_csv( os.path.join(args.in_dir, "train.csv" ) )
-    ds_test = pd.read_csv( os.path.join(args.in_dir, "test.csv" ) )
-    ds_gender_submission = pd.read_csv( os.path.join(args.in_dir, "gender_submission.csv" ) )
+    ds_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
+    ds_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
+    ds_gender_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
     if( args.debug ):
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
@@ -140,8 +142,8 @@ if __name__ == '__main__':
             ds_test[col] = label_encoder.transform(list(ds_test[col]))
 
     # 前処理後のデータセットを外部ファイルに保存
-    ds_train.to_csv( os.path.join(args.out_dir, "train_preprocessed.csv"), index=True)
-    ds_test.to_csv( os.path.join(args.out_dir, "test_preprocessed.csv"), index=True)
+    ds_train.to_csv( os.path.join(args.results_dir, args.exper_name, "train_preprocessed.csv"), index=True)
+    ds_test.to_csv( os.path.join(args.results_dir, args.exper_name, "test_preprocessed.csv"), index=True)
     if( args.debug ):
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
@@ -245,7 +247,7 @@ if __name__ == '__main__':
         plt.grid()
         plt.legend()
         plt.tight_layout()
-        plt.savefig( os.path.join(args.out_dir, "losees.png"), dpi = 300, bbox_inches = 'tight' )
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "losees.png"), dpi = 300, bbox_inches = 'tight' )
 
     # 重要特徴量
     _, ax = plt.subplots(figsize=(8, 4))
@@ -256,7 +258,7 @@ if __name__ == '__main__':
         show_values = False
     )
     plt.tight_layout()
-    plt.savefig( os.path.join(args.out_dir, "feature_importances.png"), dpi = 300, bbox_inches = 'tight' )
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "feature_importances.png"), dpi = 300, bbox_inches = 'tight' )
 
     #================================
     # Kaggle API での submit
@@ -265,11 +267,11 @@ if __name__ == '__main__':
         # 提出用データに値を設定
         sub = ds_gender_submission
         sub['Survived'] = list(map(int, y_sub))
-        sub.to_csv( os.path.join(args.out_dir, args.submit_file), index=False)
+        sub.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
 
         # Kaggle-API で submit
         api = KaggleApi()
         api.authenticate()
-        #api.competition_submit( os.path.join(args.out_dir, args.submit_file), args.submit_message, args.competition_id)
-        os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )
+        api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.exper_name, args.competition_id)
+        #os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )
         

@@ -42,8 +42,8 @@ params_xgboost = {
     'booster': 'gbtree',
     'objective': 'binary:logistic',
     "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
-    "n_estimators" : 1043,
-    'max_depth': 6,                     # 3 ~ 9 : 一様分布に従う。1刻み
+    "n_estimators" : 100,
+    'max_depth': 3,                     # 3 ~ 9 : 一様分布に従う。1刻み
     'min_child_weight': 0.47,           # 0.1 ~ 10.0 : 対数が一様分布に従う
     'subsample': 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
     'colsample_bytree': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
@@ -211,7 +211,7 @@ if __name__ == '__main__':
         # アンサンブルモデル
         ensemble_classifier = EnsembleModelClassifier(
             classifiers  = [ resnet_classifier, knn_classifier, svm_classifier, randomforest_classifier, xgboost_classifier ],
-            weights = [0.75, 0.25, 0.25, 0.25, 0.50 ],
+            weights = [0.70, 0.05, 0.05, 0.10, 0.10 ],
             fitting = [ False, True, True, True, True ],
             vote_method = "majority_vote",
         )

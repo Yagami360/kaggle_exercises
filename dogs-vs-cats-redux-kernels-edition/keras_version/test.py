@@ -34,7 +34,6 @@ if __name__ == '__main__':
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
-    parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="dogs-vs-cats-redux-kernels-edition")
     parser.add_argument('--submit', action='store_true')
     parser.add_argument("--seed", type=int, default=71)
@@ -206,5 +205,5 @@ if __name__ == '__main__':
         # Kaggle-API で submit
         api = KaggleApi()
         api.authenticate()
-        api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.submit_message, args.competition_id)
+        api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.exper_name, args.competition_id)
         os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )

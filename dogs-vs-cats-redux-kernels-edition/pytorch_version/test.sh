@@ -23,7 +23,6 @@ EXEP_NAME=${NETWORK_TYPE}_b64_200411_norm_da
 #-------------------
 python test.py \
     --exper_name ${EXEP_NAME} \
-    --submit_message ${EXEP_NAME} \
     --device gpu \
     --dataset_dir ../datasets \
     --network_type ${NETWORK_TYPE} \

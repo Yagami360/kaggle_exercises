@@ -1,7 +1,8 @@
 #!bin/sh
 set -e
 COMPETITIONS_NAME=titanic
-FILE_NAME=../${COMPETITIONS_NAME}/output/submission.csv
+EXPER_NAME=debug
+FILE_NAME=../${COMPETITIONS_NAME}/results/${EXPER_NAME}/submission.csv
 MESSAGE="From Kaggle API"
 
 kaggle competitions submissions -c ${COMPETITIONS_NAME}

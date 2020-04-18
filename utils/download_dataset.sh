@@ -6,9 +6,8 @@ COMPETITIONS_NAME=dogs-vs-cats-redux-kernels-edition
 
 mkdir -p ../${COMPETITIONS_NAME}
 mkdir -p ../${COMPETITIONS_NAME}/datasets
-mkdir -p ../${COMPETITIONS_NAME}/datasets/input
 
-cd ../${COMPETITIONS_NAME}/datasets/input
+cd ../${COMPETITIONS_NAME}/datasets
 kaggle competitions files -c ${COMPETITIONS_NAME}
 kaggle competitions download -c ${COMPETITIONS_NAME}
 unzip ${COMPETITIONS_NAME}.zip

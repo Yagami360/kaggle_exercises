@@ -11,7 +11,6 @@ EXEP_NAME=${NETWORK_TYPE}_fc_b32_200415
 #-------------------
 python test.py \
     --exper_name ${EXEP_NAME} \
-    --submit_message ${EXEP_NAME} \
     --device gpu \
     --dataset_dir ../datasets \
     --network_type ${NETWORK_TYPE} \

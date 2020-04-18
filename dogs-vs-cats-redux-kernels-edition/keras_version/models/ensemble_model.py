@@ -82,7 +82,7 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
 
         # self.classifiers に設定されている分類器のクローン clone(clf) で fitting
         self.fitted_classifiers = []
-        for i, clf in tqdm( enumerate(self.classifiers), desc = "fitting classifiers" ):
+        for i, clf in enumerate( tqdm(self.classifiers, desc = "fitting classifiers") ):
             if( self.fitting[i] ):
                 # clone() : 同じパラメータの 推定器を deep copy
                 fitted_clf = clone(clf).fit( X_train, self.encoder.transform(y_train) )
