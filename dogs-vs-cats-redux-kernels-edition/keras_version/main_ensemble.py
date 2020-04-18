@@ -34,8 +34,24 @@ import xgboost as xgb
 from dataset import load_dataset, DogsVSCatsDataGen
 from networks import ResNet50
 from models import EnsembleModelClassifier
-from models import ImageClassifierKeras, ImageClassifierSklearn
+from models import ImageClassifierKeras, ImageClassifierSklearn, ImageClassifierXGBoost
 from utils import save_checkpoint, load_checkpoint
+
+# XGBoost のデフォルトハイパーパラメーター
+params_xgboost = {
+    'booster': 'gbtree',
+    'objective': 'binary:logistic',
+    "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
+    "n_estimators" : 1043,
+    'max_depth': 6,                     # 3 ~ 9 : 一様分布に従う。1刻み
+    'min_child_weight': 0.47,           # 0.1 ~ 10.0 : 対数が一様分布に従う
+    'subsample': 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+    'colsample_bytree': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+    'gamma': 1.15e-05,                  # 1e-8 ~ 1.0 : 対数が一様分布に従う
+    'alpha': 0.0,                       # デフォルト値としておく。余裕があれば変更
+    'reg_lambda': 1.0,                  # デフォルト値としておく。余裕があれば変更
+    'random_state': 71,
+}
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -55,7 +71,7 @@ if __name__ == '__main__':
     parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
     parser.add_argument('--train_only_fc', action='store_true', help="出力層のみ学習対象にする")
     parser.add_argument('--n_samplings', type=int, default=100000, help="サンプリング数")
-    parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
+    parser.add_argument("--n_splits", type=int, default=2, help="k-fold CV での学習用データセットの分割数")
     parser.add_argument('--batch_size', type=int, default=1, help="バッチサイズ")
     parser.add_argument('--image_height', type=int, default=224, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=224, help="入力画像の幅（pixel単位）")
@@ -86,7 +102,7 @@ if __name__ == '__main__':
     # 警告非表示
     warnings.simplefilter('ignore', DeprecationWarning)
     warnings.simplefilter('ignore', FutureWarning)
-    #warnings.filterwarnings('ignore')
+    warnings.filterwarnings('ignore')
 
     # 実行 Device の設定
     if( args.debug ):
@@ -105,7 +121,7 @@ if __name__ == '__main__':
         image_height = args.image_height, image_width = args.image_width, n_samplings = args.n_samplings, one_hot_encode = False,   
     )
     
-    y_pred_val = np.zeros((len(y_train),))
+    y_pred_val = np.zeros((len(y_train),)).astype("int8")
 
     if( args.debug ):
         print( "X_train.shape : ", X_train.shape )
@@ -119,17 +135,7 @@ if __name__ == '__main__':
     #======================================================================
     # モデルの構造を定義する。
     #======================================================================
-    # resnet50
-    resnet = ResNet50(
-        image_height = args.image_height,
-        image_width = args.image_width,
-        n_channles = 3,
-        pretrained = args.pretrained,
-        train_only_fc = args.train_only_fc,
-    ).finetuned_resnet50
-    resnet.compile( loss = 'categorical_crossentropy', optimizer = optimizers.Adam( lr = 0.0001, beta_1 = 0.5, beta_2 = 0.999 ), metrics = ['accuracy'] )
-    if not args.load_checkpoints_path == '' and os.path.exists(args.load_checkpoints_path):
-        load_checkpoint(resnet, args.load_checkpoints_path )
+    pass
 
     #======================================================================
     # モデルの学習処理
@@ -151,21 +157,62 @@ if __name__ == '__main__':
         #--------------------
         # モデル定義
         #--------------------
+        # resnet50
+        resnet = ResNet50(
+            image_height = args.image_height,
+            image_width = args.image_width,
+            n_channles = 3,
+            pretrained = args.pretrained,
+            train_only_fc = args.train_only_fc,
+        ).finetuned_resnet50
+        resnet.compile( loss = 'categorical_crossentropy', optimizer = optimizers.Adam( lr = 0.0001, beta_1 = 0.5, beta_2 = 0.999 ), metrics = ['accuracy'] )
+        if not args.load_checkpoints_path == '' and os.path.exists(args.load_checkpoints_path):
+            load_checkpoint(resnet, args.load_checkpoints_path )
+
         resnet_classifier = ImageClassifierKeras(
             resnet,
             n_classes = 2,
+            debug = args.debug,
         )
 
         # その他機械学習モデル
-        knn_classifier = ImageClassifierSklearn( KNeighborsClassifier( n_neighbors = 3, p = 2, metric = 'minkowski', n_jobs = -1 ) )
-        svm_classifier = ImageClassifierSklearn( SVC( kernel = 'rbf',gamma = 10.0, C = 0.1, probability = True, random_state = args.seed, verbose = True ) )
-        randomforest_classifier = ImageClassifierSklearn( RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, oob_score = True, n_jobs = -1, random_state = args.seed, verbose = 1 ) )
+        knn_classifier = ImageClassifierSklearn( 
+            KNeighborsClassifier( n_neighbors = 2, p = 2, metric = 'minkowski', n_jobs = -1 ),
+            debug = args.debug,
+        )
+
+        svm_classifier = ImageClassifierSklearn(
+            SVC( kernel = 'rbf',gamma = 10.0, C = 0.1, probability = True, random_state = args.seed ),
+            debug = args.debug,
+        )
+
+        randomforest_classifier = ImageClassifierSklearn(
+            RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, oob_score = True, n_jobs = -1, random_state = args.seed ),
+            debug = args.debug,
+        )
+
+        xgboost_classifier = ImageClassifierXGBoost(
+            xgb.XGBClassifier( booster = params_xgboost['booster'],
+                objective = params_xgboost['objective'],
+                learning_rate = params_xgboost['learning_rate'],
+                n_estimators = params_xgboost['n_estimators'],
+                max_depth = params_xgboost['max_depth'],
+                min_child_weight = params_xgboost['min_child_weight'],
+                subsample = params_xgboost['subsample'],
+                colsample_bytree = params_xgboost['colsample_bytree'],
+                gamma = params_xgboost['gamma'],
+                alpha = params_xgboost['alpha'],
+                reg_lambda = params_xgboost['reg_lambda'],
+                random_state = params_xgboost['random_state']
+            ),
+            debug = args.debug,
+        )
 
         # アンサンブルモデル
         ensemble_classifier = EnsembleModelClassifier(
-            classifiers  = [ resnet_classifier, knn_classifier, svm_classifier, randomforest_classifier ],
-            weights = [0.75, 0.25, 0.25, 0.25 ],
-            fitting = [ True, True, True, True ],
+            classifiers  = [ resnet_classifier, knn_classifier, svm_classifier, randomforest_classifier, xgboost_classifier ],
+            weights = [0.75, 0.25, 0.25, 0.25, 0.50 ],
+            fitting = [ False, True, True, True, True ],
             vote_method = "majority_vote",
         )
 
@@ -178,23 +225,21 @@ if __name__ == '__main__':
         # モデルの推論処理
         #--------------------
         if( args.output_type == "proba" ):
-            y_pred_test = ensemble_classifier.predict_proba(X_test)
+            y_pred_test = ensemble_classifier.predict_proba(X_test)[:,1]
         else:
             y_pred_test = ensemble_classifier.predict(X_test)
 
         y_preds.append(y_pred_test)
-        #print( "[{}] len(y_pred_test) : {}".format(fold_id, len(y_pred_test)) )
+        if( args.debug ):
+            print( "[{}] y_pred_test[0:10] : {}".format(fold_id, y_pred_test[0:min(10,args.n_samplings)]) )
 
-        if( args.output_type == "proba" ):
-            y_pred_val[valid_index] = ensemble_classifier.predict_proba(X_valid_fold)
-        else:
-            y_pred_val[valid_index] = ensemble_classifier.predict(X_valid_fold)
-        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_val)) )
-    
+        y_pred_val[valid_index] = np.argmax( ensemble_classifier.predict_proba(X_valid_fold), axis = 1).astype("int8")
+
     accuracy = (y_train == y_pred_val).sum()/len(y_pred_val)
     print( "accuracy [val] : {:0.5f}".format(accuracy) )
 
-    y_preds = list(map(float, y_preds)) # 0.999e-01 -> 0.999 の記載にする
+    y_preds = sum(y_preds) / len(y_preds)   # k-fold CV で平均化 
+    y_preds = list(map(float, y_preds))     # 0.999e-01 -> 0.999 の記載にする
     print( "len(y_preds)", len(y_preds) )
     print( "y_preds[0:10]", y_preds[0:min(10,args.n_samplings)] )
 

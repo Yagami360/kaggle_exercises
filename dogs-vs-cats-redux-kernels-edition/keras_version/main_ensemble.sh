@@ -18,4 +18,5 @@ python main_ensemble.py \
     --train_only_fc \
     --batch_size 1 \
     --n_samplings 100 \
+    --n_splits 2 \
     --debug

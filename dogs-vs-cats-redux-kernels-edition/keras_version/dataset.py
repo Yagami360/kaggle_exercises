@@ -48,7 +48,7 @@ def load_dataset(
                 y_label[i] = to_categorical( 1, n_classes )
             else:
                 y_label[i] = 1
-
+        
     return X_feature, y_label
 
 

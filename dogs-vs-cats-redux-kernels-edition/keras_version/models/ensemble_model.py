@@ -82,11 +82,15 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
 
         # self.classifiers に設定されている分類器のクローン clone(clf) で fitting
         self.fitted_classifiers = []
-        for i, clf in tqdm( enumerate(self.classifiers), desc = "classifiers" ):
+        for i, clf in tqdm( enumerate(self.classifiers), desc = "fitting classifiers" ):
             if( self.fitting[i] ):
-                # clone() : 同じパラメータの 推定器を生成
+                # clone() : 同じパラメータの 推定器を deep copy
                 fitted_clf = clone(clf).fit( X_train, self.encoder.transform(y_train) )
-                self.fitted_classifiers.append( fitted_clf )
+            else:
+                fitted_clf = clone(clf)
+                #fitted_clf = clf
+
+            self.fitted_classifiers.append( fitted_clf )
 
         return self # scikit-learn の fit() は self を返す
 
@@ -118,7 +122,8 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
         else:
             # 各弱識別器 clf の predict() 結果を predictions (list) に格納
             predictions = [ clf.predict(X_test) for clf in self.fitted_classifiers ]
-            #print( "predictions : \n", predictions)
+            #predictions = [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ]
+            print( "predictions : \n", predictions)
             #print( "predictions.shape : \n", predictions[0].shape)
 
             # predictions を 転置し, 行と列 (shape) を反転
@@ -157,7 +162,7 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
         # 各弱識別器 clf の predict_prpba() 結果を predictions (list) に格納
         #predict_probas = [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ]
         #print( "EnsembleLearningClassifier.predict_proba() { predict_probas } : \n", predict_probas )
-        predict_probas = np.asarray( [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ] )
+        predict_probas = np.asarray( [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ] )     # shape = [n_classifer]
 
         # 平均化
         ave_probas = np.average( predict_probas, axis = 0, weights = self.weights )
