@@ -25,18 +25,18 @@ from tensorboardX import SummaryWriter
 
 # 自作クラス
 from dataset import DogsVSCatsDataset, DogsVSCatsDataLoader
-from models import ImageClassifierDNN
+from networks import MyResNet18, ResNet18, ResNet50
+from models import ImageClassifierPyTorch
 from models import EnsembleModelClassifier
 from utils import save_checkpoint, load_checkpoint
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="dog-vs-cat_test", help="実験名")
+    parser.add_argument("--exper_name", default="emsemble_resnet", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
-    parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="dogs-vs-cats-redux-kernels-edition")
     parser.add_argument('--submit', action='store_true')
     parser.add_argument("--seed", type=int, default=71)
@@ -113,19 +113,41 @@ if __name__ == '__main__':
 
     #======================================================================
     # モデルの構造を定義する。
-    #======================================================================    
-    classifier1 = ImageClassifierDNN( device, args.network_type[0], n_classes = 2, pretrained = False, train_only_fc = False )
+    #======================================================================
+    if( args.network_type[0] == "my_resnet18" ):
+        model1 = MyResNet18( n_in_channels = 3, n_fmaps = 64, n_classes = 2 ).to(device)
+    elif( args.network_type[0] == "resnet18" ):
+        model1 = ResNet18( n_classes = 2, pretrained = False, train_only_fc = False ).to(device)
+    else:
+        model1 = ResNet50( n_classes = 2, pretrained = False, train_only_fc = False ).to(device)
+ 
+    if( args.network_type[1] == "my_resnet18" ):
+        model2 = MyResNet18( n_in_channels = 3, n_fmaps = 64, n_classes = 2 ).to(device)
+    elif( args.network_type[1] == "resnet18" ):
+        model2 = ResNet18( n_classes = 2, pretrained = False, train_only_fc = False ).to(device)
+    else:
+        model2 = ResNet50( n_classes = 2, pretrained = False, train_only_fc = False ).to(device)
+        
+    if( args.network_type[1] == "my_resnet18" ):
+        model3 = MyResNet18( n_in_channels = 3, n_fmaps = 64, n_classes = 2 ).to(device)
+    elif( args.network_type[1] == "resnet18" ):
+        model3 = ResNet18( n_classes = 2, pretrained = False, train_only_fc = True ).to(device)
+    else:
+        model3 = ResNet50( n_classes = 2, pretrained = False, train_only_fc = True ).to(device)
+
+    classifier1 = ImageClassifierPyTorch( device, model1 )
     classifier1.load_check_point( args.load_checkpoints_path[0] )
 
-    classifier2 = ImageClassifierDNN( device, args.network_type[1], n_classes = 2, pretrained = False, train_only_fc = False )
+    classifier2 = ImageClassifierPyTorch( device, model2 )
     classifier2.load_check_point( args.load_checkpoints_path[1] )
 
-    classifier3 = ImageClassifierDNN( device, args.network_type[2], n_classes = 2, pretrained = False, train_only_fc = True )
+    classifier3 = ImageClassifierPyTorch( device, model3 )
     classifier3.load_check_point( args.load_checkpoints_path[2] )
 
     ensemble_classifier = EnsembleModelClassifier(
         classifiers  = [ classifier1, classifier2, classifier3 ],
         weights = [0.25, 0.50, 0.75 ],
+        fitting = [False, False, False],
         vote_method = "majority_vote",
     )
 
@@ -151,7 +173,7 @@ if __name__ == '__main__':
         if( args.output_type == "fixed" ):
             predicts = ensemble_classifier.predict( image )
         else:
-            predicts = ensemble_classifier.predict_proba( image )
+            predicts = ensemble_classifier.predict_proba( image )[:, 1]
 
         y_preds.append( predicts.tolist()[0] )
         if( args.debug and n_print > 0 ):
@@ -194,5 +216,5 @@ if __name__ == '__main__':
         # Kaggle-API で submit
         api = KaggleApi()
         api.authenticate()
-        api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.submit_message, args.competition_id)
+        api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.exper_name, args.competition_id)
         os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )

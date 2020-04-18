@@ -23,15 +23,38 @@ import torchvision.transforms as transforms
 from torchvision.utils import save_image
 from tensorboardX import SummaryWriter
 
+# NN 以外の機械学習モデル
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+import xgboost as xgb
+
 # 自作クラス
-from dataset import DogsVSCatsDataset, DogsVSCatsDataLoader
+from dataset import DogsVSCatsDataset, DogsVSCatsDataLoader, load_dataset
 from networks import MyResNet18, ResNet18, ResNet50
+from models import ImageClassifierPyTorch, ImageClassifierSklearn, ImageClassifierXGBoost
+from models import EnsembleModelClassifier
 from utils import save_checkpoint, load_checkpoint
 
+# XGBoost のデフォルトハイパーパラメーター
+params_xgboost = {
+    'booster': 'gbtree',
+    'objective': 'binary:logistic',
+    "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
+    "n_estimators" : 100,
+    'max_depth': 3,                     # 3 ~ 9 : 一様分布に従う。1刻み
+    'min_child_weight': 0.47,           # 0.1 ~ 10.0 : 対数が一様分布に従う
+    'subsample': 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+    'colsample_bytree': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+    'gamma': 1.15e-05,                  # 1e-8 ~ 1.0 : 対数が一様分布に従う
+    'alpha': 0.0,                       # デフォルト値としておく。余裕があれば変更
+    'reg_lambda': 1.0,                  # デフォルト値としておく。余裕があれば変更
+    'random_state': 71,
+}
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="resnet", help="実験名")
+    parser.add_argument("--exper_name", default="emsemble_resnet_sklearn_xgboost", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
@@ -42,16 +65,16 @@ if __name__ == '__main__':
 
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
-    parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
-    parser.add_argument('--network_type', choices=['my_resnet18', 'resnet18', 'resnet50'], default="resnet50", help="ネットワークの種類")
-    parser.add_argument('--pretrained', action='store_true', help="事前学習済みモデルを行うか否か")
+    parser.add_argument('--load_checkpoints_path', action='append', help="モデルの読み込みファイルのパス")
+    parser.add_argument('--network_type', action='append', choices=['my_resnet18', 'resnet18', 'resnet50'], help="ネットワークの種類")
     parser.add_argument('--image_height', type=int, default=224, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=224, help="入力画像の幅（pixel単位）")
     parser.add_argument('--batch_size', type=int, default=1, help="バッチサイズ")
-    parser.add_argument('--n_samplings', type=int, default=100000, help="サンプリング数")
+    parser.add_argument('--n_train_samplings', type=int, default=100000, help="学習用データのサンプリング数")
+    parser.add_argument('--n_test_samplings', type=int, default=100000, help="テスト用データのサンプリング数")
     parser.add_argument('--n_fmaps', type=int, default=64, help="１層目の特徴マップの枚数")
     parser.add_argument('--enable_da', action='store_true', help="Data Augumentation を行うか否か")
-    parser.add_argument('--output_type', choices=['fixed', 'proba'], default="proba", help="主力形式（確定値 or 確率値）")
+    parser.add_argument('--output_type', choices=['fixed', 'prob'], default="prob", help="主力形式（確定値 or 確率値）")
 
     parser.add_argument('--use_amp', action='store_true', help="AMP [Automatic Mixed Precision] の使用有効化")
     parser.add_argument('--opt_level', choices=['O0','O1','O2','O3'], default='O1', help='mixed precision calculation mode')
@@ -107,36 +130,85 @@ if __name__ == '__main__':
     # データセットを読み込み or 生成
     # データの前処理
     #======================================================================
+    X_train, y_train = load_dataset(
+        root_dir = args.dataset_dir, datamode =  "train",
+        image_height = args.image_height, image_width = args.image_width, n_samplings = args.n_train_samplings,
+    )
+
+    """
+    X_test, _ = load_dataset(
+        root_dir = args.dataset_dir, datamode =  "test",
+        image_height = args.image_height, image_width = args.image_width, n_samplings = args.n_test_samplings,   
+    )
+    """
+
     ds_test = DogsVSCatsDataset( args, args.dataset_dir, "test", enable_da = False )
     dloader_test = DogsVSCatsDataLoader(ds_test, batch_size=args.batch_size, shuffle=False, n_workers = args.n_workers )
 
     #======================================================================
     # モデルの構造を定義する。
-    #======================================================================
-    if( args.network_type == "my_resnet18" ):
-        model = MyResNet18( n_in_channels = 3, n_fmaps = args.n_fmaps, n_classes = 2 ).to(device)
-    elif( args.network_type == "resnet18" ):
-        model = ResNet18( n_classes = 2, pretrained = False ).to(device)
+    #======================================================================    
+    if( args.network_type[0] == "my_resnet18" ):
+        resnet = MyResNet18( n_in_channels = 3, n_fmaps = 64, n_classes = 2 ).to(device)
+    elif( args.network_type[0] == "resnet18" ):
+        resnet = ResNet18( n_classes = 2, pretrained = False, train_only_fc = False ).to(device)
     else:
-        model = ResNet50( n_classes = 2, pretrained = False ).to(device)
+        resnet = ResNet50( n_classes = 2, pretrained = False, train_only_fc = False ).to(device)
 
-    if( args.debug ):
-        print( "model :\n", model )
+    resnet_classifier = ImageClassifierPyTorch( device, resnet, debug = args.debug )
+    resnet_classifier.load_check_point( args.load_checkpoints_path[0] )
 
-    # モデルを読み込む
-    if not args.load_checkpoints_path == '' and os.path.exists(args.load_checkpoints_path):
-        load_checkpoint(model, device, args.load_checkpoints_path )
-        print( "load check points" )
+    knn_classifier = ImageClassifierSklearn( 
+        KNeighborsClassifier( n_neighbors = 2, p = 2, metric = 'minkowski', n_jobs = -1 ),
+        debug = args.debug,
+    )
+
+    svm_classifier = ImageClassifierSklearn(
+        SVC( kernel = 'rbf',gamma = 10.0, C = 0.1, probability = True, random_state = args.seed ),
+        debug = args.debug,
+    )
+
+    randomforest_classifier = ImageClassifierSklearn(
+        RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, oob_score = True, n_jobs = -1, random_state = args.seed ),
+        debug = args.debug,
+    )
+
+    xgboost_classifier = ImageClassifierXGBoost(
+        xgb.XGBClassifier( booster = params_xgboost['booster'],
+            objective = params_xgboost['objective'],
+            learning_rate = params_xgboost['learning_rate'],
+            n_estimators = params_xgboost['n_estimators'],
+            max_depth = params_xgboost['max_depth'],
+            min_child_weight = params_xgboost['min_child_weight'],
+            subsample = params_xgboost['subsample'],
+            colsample_bytree = params_xgboost['colsample_bytree'],
+            gamma = params_xgboost['gamma'],
+            alpha = params_xgboost['alpha'],
+            reg_lambda = params_xgboost['reg_lambda'],
+            random_state = params_xgboost['random_state']
+        ),
+        debug = args.debug,
+    )
+
+    # アンサンブルモデル
+    ensemble_classifier = EnsembleModelClassifier(
+        classifiers  = [ resnet_classifier, knn_classifier, svm_classifier, randomforest_classifier, xgboost_classifier ],
+        weights = [0.70, 0.05, 0.05, 0.10, 0.10 ],
+        fitting = [ False, True, True, True, True ],
+        vote_method = "majority_vote",
+    )
+
+    #======================================================================
+    # モデルの学習処理
+    #======================================================================
+    ensemble_classifier.fit(X_train, y_train)
 
     #======================================================================
     # モデルの推論処理
     #======================================================================
-    print("Starting Test Loop...")
     y_preds = []
     n_print = 5
     for step, inputs in enumerate(tqdm(dloader_test.data_loader)):
-        model.eval()
-
         # ミニバッチデータを GPU へ転送
         inputs = dloader_test.next_batch()
         image_name = inputs["image_name"]
@@ -146,34 +218,23 @@ if __name__ == '__main__':
             print( "image_name : ", image_name )
             print( "image.shape : ", image.shape )
             print( "targets.shape : ", targets.shape )
-            #save_image( image, os.path.join(args.results_dir, args.exper_name, image_name[0]) )
 
-        #----------------------------------------------------
-        # データをモデルに流し込む
-        #----------------------------------------------------
-        with torch.no_grad():
-            output = model( image )
-            if( args.debug and n_print > 0 ):
-                print( "output.shape :", output.shape )
-
-        #----------------------------------------------------
-        # 正解率を計算する。（バッチデータ）
-        #----------------------------------------------------
+        #--------------------
+        # モデルの推論
+        #--------------------
         if( args.output_type == "fixed" ):
-            # 確率値が最大のラベル 0~9 を予想ラベルとする。
-            _, predicts = torch.max( output.data, dim = 1 )
+            predicts = ensemble_classifier.predict( image )
         else:
-            # 確率値で出力
-            predicts = F.softmax(output, dim=1)[:, 1]
+            predicts = ensemble_classifier.predict_proba( image )[:,1]
 
         y_preds.append( predicts.tolist()[0] )
         if( args.debug and n_print > 0 ):
             print( "predicts.shape :", predicts.shape )
-            print( "output[0]=({:.5f},{:.5f}), predicts[0]={}".format(output[0,0].item(), output[0,1].item(), predicts[0].item()) )
+            print( "predicts[0]={}".format(predicts[0]) )
             #print( "y_preds :", y_preds )
 
         n_print -= 1
-        if( step >= args.n_samplings ):
+        if( step >= args.n_test_samplings ):
             break
 
     print( "y_preds[0:10] :\n", y_preds[0:10] )
@@ -194,7 +255,7 @@ if __name__ == '__main__':
         img = Image.open( os.path.join(args.dataset_dir, "test", '{}.jpg'.format(i+1)) )
         ax.imshow(img)
 
-    fig.savefig( os.path.join(args.results_dir, args.exper_name, "classification.png"), dpi = 150, bbox_inches = 'tight' )
+    fig.savefig( os.path.join(args.results_dir, args.exper_name, "classification.png"), dpi = 100, bbox_inches = 'tight' )
 
     #================================
     # Kaggle API での submit
@@ -207,5 +268,5 @@ if __name__ == '__main__':
         # Kaggle-API で submit
         api = KaggleApi()
         api.authenticate()
-        api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.exper_name, args.competition_id)
+        api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.dataset_dir, args.competition_id)
         os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )

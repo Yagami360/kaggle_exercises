@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 import os
 import numpy as np
-import pandas as pd
+from tqdm import tqdm
 
 # scikit-learn ライブラリ関連
 from sklearn.base import BaseEstimator              # 推定器 Estimator の上位クラス. get_params(), set_params() 関数が定義されている.
@@ -16,19 +16,22 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
     アンサンブルモデルの識別器 classifier の自作クラス.
     scikit-learn ライブラリの推定器 estimator の基本クラス BaseEstimator, ClassifierMixin を継承している.
     """
-    def __init__( self, classifiers, weights = None, vote_method = "majority_vote" ):
+    def __init__( self, classifiers, weights = None, fitting = None, vote_method = "majority_vote" ):
         """
         Args :
             classifiers : list <classifier オブジェクト>
                 分類器のクラスのオブジェクトのリスト
             weights : list <float>
                 各分類器の対する重みの値のリスト : __init()__ の引数と同名のオブジェクトの属性
+            fitting : list<bool>
+                各分類器の対する学習を行うかのフラグのリスト
             vote_method : str ( "majority_vote" or "probability_vote" )
                 アンサンブルによる最終的な判断判断手法 : __init()__ の引数と同名のオブジェクトの属性
                 "majority_vote"    : 弱識別器の多数決で決定する.多数決方式 (＝クラスラベルの argmax() 結果）
                 "probability_vote" : 弱識別器の重み付け結果で決定する.（＝クラスの所属確率の argmax() 結果）
         """
         self.classifiers = classifiers
+        self.fitting = fitting
         self.fitted_classifiers = classifiers
         self.weights = weights
         self.n_classes = 0
@@ -48,6 +51,11 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
 
         for i, named_classifier in enumerate(self.named_classifiers):
             print( "name {} : {}".format(i, self.named_classifiers[named_classifier]) )
+
+        if fitting == None:
+            fitting = []
+            for i in range(len(self.classifiers)):
+                fitting.append(True)
 
         return
 
@@ -74,12 +82,17 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
 
         # self.classifiers に設定されている分類器のクローン clone(clf) で fitting
         self.fitted_classifiers = []
-        for clf in self.classifiers:
-            # clone() : 同じパラメータの 推定器を生成
-            fitted_clf = clone(clf).fit( X_train, self.encoder.transform(y_train) )
+        for i, clf in enumerate( tqdm(self.classifiers, desc = "fitting classifiers") ):
+            if( self.fitting[i] ):
+                # clone() : 同じパラメータの 推定器を deep copy
+                fitted_clf = clone(clf).fit( X_train, self.encoder.transform(y_train) )
+            else:
+                fitted_clf = clone(clf)
+                #fitted_clf = clf
+
             self.fitted_classifiers.append( fitted_clf )
 
-        return self
+        return self # scikit-learn の fit() は self を返す
 
     def predict( self, X_test ):
         """
@@ -109,7 +122,8 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
         else:
             # 各弱識別器 clf の predict() 結果を predictions (list) に格納
             predictions = [ clf.predict(X_test) for clf in self.fitted_classifiers ]
-            #print( "predictions : \n", predictions)
+            #predictions = [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ]
+            print( "predictions : \n", predictions)
             #print( "predictions.shape : \n", predictions[0].shape)
 
             # predictions を 転置し, 行と列 (shape) を反転
@@ -148,7 +162,7 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
         # 各弱識別器 clf の predict_prpba() 結果を predictions (list) に格納
         #predict_probas = [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ]
         #print( "EnsembleLearningClassifier.predict_proba() { predict_probas } : \n", predict_probas )
-        predict_probas = np.asarray( [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ] )
+        predict_probas = np.asarray( [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ] )     # shape = [n_classifer]
 
         # 平均化
         ave_probas = np.average( predict_probas, axis = 0, weights = self.weights )

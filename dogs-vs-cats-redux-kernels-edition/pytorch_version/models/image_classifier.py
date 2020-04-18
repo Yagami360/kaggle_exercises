@@ -2,6 +2,14 @@ import os
 import numpy as np
 #from apex import amp
 
+# scikit-learn ライブラリ関連
+from sklearn.base import BaseEstimator              # 推定器 Estimator の上位クラス. get_params(), set_params() 関数が定義されている.
+from sklearn.base import ClassifierMixin            # 推定器 Estimator の上位クラス. score() 関数が定義されている.
+from sklearn.utils.estimator_checks import check_estimator
+
+from sklearn.pipeline import _name_estimators       # 
+from sklearn.base import clone                      #
+
 # PyTorch
 import torch
 from torch.utils.data import TensorDataset, DataLoader
@@ -13,29 +21,15 @@ import torchvision
 import torchvision.transforms as transforms
 
 # 自作クラス
-from networks import MyResNet18, ResNet18, ResNet50
 from utils import save_checkpoint, load_checkpoint
 
 
-class ImageClassifierDNN( nn.Module ):
-    """
-    ディープラーニングベースの画像分類器
-    """
-    def __init__(self, device, network_type = "resnet50", n_classes = 2, pretrained = True, train_only_fc = True ):
-        super( ImageClassifierDNN, self ).__init__()
+class ImageClassifierPyTorch( nn.Module, BaseEstimator, ClassifierMixin ):
+    def __init__(self, device, model, debug = False ):
+        super( ImageClassifierPyTorch, self ).__init__()
         self.device = device
-        self.network_type = network_type
-        self.n_classes = n_classes
-        self.pretrained = pretrained
-        self.train_only_fc = train_only_fc
-
-        # モデルの定義
-        if( network_type == "my_resnet18" ):
-            self.model = MyResNet18( n_in_channels = 3, n_fmaps = 64, n_classes = 2 ).to(device)
-        elif( network_type == "resnet18" ):
-            self.model = ResNet18( n_classes, pretrained, train_only_fc ).to(device)
-        else:
-            self.model = ResNet50( n_classes, pretrained, train_only_fc ).to(device)
+        self.model = model
+        self.debug = debug
 
         # optimizer の設定
         pass
@@ -68,7 +62,9 @@ class ImageClassifierDNN( nn.Module ):
         self.model.train()
 
         # 未実装
-        return
+        pass
+
+        return self
 
     def predict( self, X_test ):
         self.model.eval()
@@ -78,9 +74,14 @@ class ImageClassifierDNN( nn.Module ):
             output = self.model( X_test )
 
         # 確率値が最大のラベル 0~9 を予想ラベルとする。
-        _, predict = torch.max( output.data, dim = 1 )
-        predict = predict.detach().cpu().numpy()
-        return predict
+        _, predicts = torch.max( output.data, dim = 1 )
+        predicts = predicts.detach().cpu().numpy()
+        """
+        if( self.debug ):
+            print( "[PyTorch] predicts.shape : ", predicts.shape )
+        """
+        
+        return predicts
 
 
     def predict_proba( self, X_test ):
@@ -95,6 +96,81 @@ class ImageClassifierDNN( nn.Module ):
             output = self.model( X_test )
 
         # 確率値で出力
-        predict_proba = F.softmax(output, dim=1)[:, 1]
-        predict_proba = predict_proba.detach().cpu().numpy()
-        return predict_proba
+        #predicts = F.softmax(output, dim=1)[:, 1]
+        predicts = F.softmax(output, dim=1)
+        predicts = predicts.detach().cpu().numpy()
+        """
+        if( self.debug ):
+            print( "[PyTorch] predicts.shape : ", predicts.shape )
+        """
+        return predicts
+
+
+class ImageClassifierSklearn( BaseEstimator, ClassifierMixin ):
+    def __init__( self, model, debug = False ):
+        self.model = model
+        self.debug = debug
+        return
+
+    def fit( self, X_train, y_train ):
+        X_train = X_train.reshape(X_train.shape[0],-1)  # shape = [N,H,W,C] -> [N, H*W*C] 
+        #X_train = X_train.detach().cpu().numpy().reshape(X_train.shape[0],-1)   # shape = [N,C,H,W] -> [N, C*H*W] 
+        self.model.fit(X_train, y_train)
+        return self
+
+    def predict(self, X_test):
+        X_test = X_test.detach().cpu().numpy().reshape(X_test.shape[0],-1)   # shape = [N,C,H,W] -> [N, C*H*W] 
+        predicts = self.model.predict(X_test)
+        predicts = np.argmax(predicts, axis = 1)
+        """
+        if( self.debug ):
+            print( "[sklearn] predicts.shape : ", predicts.shape )
+            #print( "[sklearn] predicts[0:5] : ", predicts[0:5] )
+        """
+        return predicts
+
+    def predict_proba(self, X_test):
+        X_test = X_test.detach().cpu().numpy().reshape(X_test.shape[0],-1)   # shape = [N,C,H,W] -> [N, C*H*W] 
+        predicts = self.model.predict_proba(X_test)
+        #predicts = predicts[:,1] 
+        """
+        if( self.debug ):
+            print( "[sklearn] predicts.shape : ", predicts.shape )
+            #print( "[sklearn] predicts[0:5] : ", predicts[0:5] )
+        """
+        return predicts
+
+
+class ImageClassifierXGBoost( BaseEstimator, ClassifierMixin ):
+    def __init__( self, model, debug = False ):
+        self.model = model
+        self.debug = debug
+        return
+
+    def fit( self, X_train, y_train ):
+        X_train = X_train.reshape(X_train.shape[0],-1)  # shape = [N,H,W,C] -> [N, H*W*C] 
+        #X_train = X_train.detach().cpu().numpy().reshape(X_train.shape[0],-1)   # shape = [N,C,H,W] -> [N, C*H*W] 
+        self.model.fit(X_train, y_train, verbose = self.debug )
+        return self
+
+    def predict(self, X_test):
+        X_test = X_test.detach().cpu().numpy().reshape(X_test.shape[0],-1)
+        predicts = self.model.predict(X_test)
+        predicts = np.argmax(predicts, axis = 1)
+        """
+        if( self.debug ):
+            print( "[XBboost] predicts.shape : ", predicts.shape )
+            #print( "[XBboost] predicts[0:10] : ", predicts[0:5] )
+        """
+        return predicts
+
+    def predict_proba(self, X_test):
+        X_test = X_test.detach().cpu().numpy().reshape(X_test.shape[0],-1)
+        predicts = self.model.predict_proba(X_test)
+        #predicts = predicts[:,1] 
+        """
+        if( self.debug ):
+            print( "[XBboost] predicts.shape : ", predicts.shape )
+            #print( "[XBboost] predicts[0:10] : ", predicts[0:5] )
+        """
+        return predicts

@@ -17,12 +17,10 @@ EXEP_NAME=ensemble_resnet
 #-------------------
 python test_ensemble.py \
     --exper_name ${EXEP_NAME} \
-    --submit_message ${EXEP_NAME} \
     --device gpu \
-    --dataset_dir datasets \
+    --dataset_dir ../datasets \
     --network_type ${NETWORK_TYPE1} --network_type ${NETWORK_TYPE2} --network_type ${NETWORK_TYPE3} \
     --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH1} --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH2} --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH3} \
     --batch_size 1 \
-    --n_samplings 100000 \
-    --debug \
-    --submit
+    --n_samplings 100 \
+    --debug

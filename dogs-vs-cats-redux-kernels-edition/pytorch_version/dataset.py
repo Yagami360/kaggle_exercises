@@ -16,6 +16,31 @@ IMG_EXTENSIONS = (
     '.JPG', '.JPEG', '.PNG', '.PPM', '.BMP', '.PGM', '.TIF',
 )
 
+def load_dataset(
+    root_dir, 
+    datamode = "train", 
+    image_height = 224, image_width = 224, n_classes = 2,
+    n_samplings = -1,
+):
+    dataset_dir = os.path.join( root_dir, datamode )
+    image_names = sorted( [f for f in os.listdir(dataset_dir) if f.endswith(IMG_EXTENSIONS)], key=lambda s: int(re.search(r'\d+', s).group()) )
+    image_names = image_names[0: min(n_samplings, len(image_names))]
+
+    X_feature = np.zeros( (len(image_names), image_height, image_width, 3), dtype=np.uint8 )
+    for i, name in enumerate(image_names):
+        img = cv2.imread( os.path.join(dataset_dir,name) )
+        img = cv2.resize( img, (image_height, image_width), interpolation = cv2.INTER_LANCZOS4 )  # shape = [H,W,C]
+        X_feature[i] = img
+
+    y_label = np.zeros( (len(image_names), 1), dtype=np.uint8 )
+    for i, name in enumerate(image_names):
+        if( "cat." in name ):
+            y_label[i] = 0
+        else:
+            y_label[i] = 1
+        
+    return X_feature, y_label
+
 
 class DogsVSCatsDataset(data.Dataset):
     """
