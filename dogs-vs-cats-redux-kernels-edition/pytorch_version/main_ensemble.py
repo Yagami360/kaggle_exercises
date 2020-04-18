@@ -55,7 +55,7 @@ params_xgboost = {
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--exper_name", default="emsemble_resnet_sklearn_xgboost", help="実験名")
-    parser.add_argument("--dataset_dir", type=str, default="datasets")
+    parser.add_argument("--dataset_dir", type=str, default="../datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="dogs-vs-cats-redux-kernels-edition")

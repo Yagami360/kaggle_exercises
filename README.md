@@ -3,20 +3,25 @@ Kaggle の練習用レポジトリ
 
 ## Competitions
 
-- テーブルコンペ
-    - 分類
-        - [Titanic: Machine Learning from Disaster](https://github.com/Yagami360/kaggle_exercises/tree/master/titanic)
-    - 回帰
-        - [House Prices: Advanced Regression Techniques](https://github.com/Yagami360/kaggle_exercises/tree/master/house-prices-advanced-regression-techniques)
-    - Restaurant Revenue Prediction
-    - Home Credit Default Risk
+### テーブルコンペ
+- 分類
+    - [Titanic: Machine Learning from Disaster](https://github.com/Yagami360/kaggle_exercises/tree/master/titanic)
+- 回帰
+    - [House Prices: Advanced Regression Techniques](https://github.com/Yagami360/kaggle_exercises/tree/master/house-prices-advanced-regression-techniques)
+- Restaurant Revenue Prediction
+- Home Credit Default Risk
 
-- 画像コンペ
+### 画像コンペ
+- 画像分類
     - Digit Recognizer
     - [Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
-    - Deepfake Detection Challenge
-    - Facial Keypoints Detection
-    
+
+- 物体検出
+    - xxx
+    - - Facial Keypoints Detection
+- Deepfake Detection Challenge
+
+
 - 自然言語コンペ
     - xxx
 
