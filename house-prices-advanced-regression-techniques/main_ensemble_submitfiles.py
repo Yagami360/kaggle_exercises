@@ -2,6 +2,7 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import yaml
 import random
 import warnings
 from matplotlib import pyplot as plt
@@ -20,25 +21,6 @@ import xgboost as xgb
 
 from models import EnsembleRegressor, RegressorXGBoost
 
-# XGBoost のデフォルトハイパーパラメーター
-params_xgboost = {
-    'booster': 'gbtree',
-    'objective': 'reg:linear',          # 線形回帰
-    "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
-    "n_estimators" : 1050,              # 
-    'max_depth': 6,                     # 3 ~ 9 : 一様分布に従う。1刻み
-    'min_child_weight': 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う
-    'subsample': 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'colsample_bytree': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'gamma': 0.0,                       # 1e-8 ~ 1.0 : 対数が一様分布に従う
-    'alpha': 0.0,                       # デフォルト値としておく。余裕があれば変更
-    'reg_lambda': 1.0,                  # デフォルト値としておく。余裕があれば変更
-    'eval_metric': 'rmse',              # 平均2乗平方根誤差
-    "num_boost_round": 1000,            # 試行回数
-    "early_stopping_rounds": 100,       # early stopping を行う繰り返し回数
-    'random_state': 71,
-}
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -47,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="house-prices-advanced-regression-techniques")
+    parser.add_argument("--params_file", type=str, default="parames/xgboost_regressor_default.yml")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument('--target_norm', action='store_true')
     parser.add_argument("--seed", type=int, default=71)
@@ -169,7 +152,7 @@ if __name__ == '__main__':
 
     #================================
     # knn での学習 & 推論
-    #================================
+    #================================            
     y_pred_val = np.zeros((len(y_train),))
     y_preds = []
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
@@ -313,6 +296,15 @@ if __name__ == '__main__':
     #================================
     # XGBoost での学習 & 推論
     #================================
+    # モデルのパラメータの読み込み
+    with open( args.params_file ) as f:
+        params = yaml.safe_load(f)
+        model_params = params["model"]["model_params"]
+        model_train_params = params["model"]["train_params"]
+        if( args.debug ):
+            print( "params :\n", params )
+
+    # k-fold CV での学習 & 推論
     kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
     y_pred_val = np.zeros((len(y_train),))
     y_preds = []
@@ -323,18 +315,18 @@ if __name__ == '__main__':
 
         # 回帰モデル定義
         model = xgb.XGBRegressor(
-            booster = params_xgboost['booster'],
-            objective = params_xgboost['objective'],
-            learning_rate = params_xgboost['learning_rate'],
-            n_estimators = params_xgboost['n_estimators'],
-            max_depth = params_xgboost['max_depth'],
-            min_child_weight = params_xgboost['min_child_weight'],
-            subsample = params_xgboost['subsample'],
-            colsample_bytree = params_xgboost['colsample_bytree'],
-            gamma = params_xgboost['gamma'],
-            alpha = params_xgboost['alpha'],
-            reg_lambda = params_xgboost['reg_lambda'],
-            random_state = params_xgboost['random_state']                    
+            booster = model_params['booster'],
+            objective = model_params['objective'],
+            learning_rate = model_params['learning_rate'],
+            n_estimators = model_params['n_estimators'],
+            max_depth = model_params['max_depth'],
+            min_child_weight = model_params['min_child_weight'],
+            subsample = model_params['subsample'],
+            colsample_bytree = model_params['colsample_bytree'],
+            gamma = model_params['gamma'],
+            alpha = model_params['alpha'],
+            reg_lambda = model_params['reg_lambda'],
+            random_state = model_params['random_state']                    
         )
 
         # モデルの学習処理

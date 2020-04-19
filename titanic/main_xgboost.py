@@ -2,6 +2,7 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import yaml
 from pandas_profiling import ProfileReport
 import random
 import warnings
@@ -16,24 +17,6 @@ from sklearn.metrics import accuracy_score
 
 import xgboost as xgb
 
-# XGBoost のデフォルトハイパーパラメーター
-params_xgboost = {
-    'booster': 'gbtree',
-    'objective': 'binary:logistic',     # 2-クラス分類向けのロジスティック回帰で、確率を出力
-    "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
-    "n_estimators" : 1050,
-    'max_depth': 5,                     # 3 ~ 9 : 一様分布に従う。1刻み
-    'min_child_weight': 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う
-    'subsample': 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'colsample_bytree': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'gamma': 0.0,                       # 1e-8 ~ 1.0 : 対数が一様分布に従う
-    'alpha': 0.0,                       # デフォルト値としておく。余裕があれば変更
-    'reg_lambda': 1.0,                  # デフォルト値としておく。余裕があれば変更
-    'eval_metric': 'error',             # 2-クラス分類のエラー率
-    "num_boost_round": 10000,           # 試行回数
-    "early_stopping_rounds": 5000,      # early stopping を行う繰り返し回数
-    'random_state': 71,
-}
 
 if __name__ == '__main__':
     """
@@ -46,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="titanic")
+    parser.add_argument("--params_file", type=str, default="parames/xgboost_classifier_default.yml")
     parser.add_argument('--train_type', choices=['train', 'fit'], default="train", help="XGBoost の学習タイプ")
     parser.add_argument("--val_rate", type=float, default=0.25, help="hold-out 法での検証用データセットの割合")
     parser.add_argument("--seed", type=int, default=71)
@@ -172,20 +156,29 @@ if __name__ == '__main__':
     #================================
     # モデルの定義
     #================================
+    # モデルのパラメータの読み込み
+    with open( args.params_file ) as f:
+        params = yaml.safe_load(f)
+        model_params = params["model"]["model_params"]
+        model_train_params = params["model"]["train_params"]
+        if( args.debug ):
+            print( "params :\n", params )
+
+    # モデルの定義
     if( args.train_type == "fit" ):
         model = xgb.XGBClassifier(
-            booster = params_xgboost['booster'],
-            objective = params_xgboost['objective'],
-            learning_rate = params_xgboost['learning_rate'],
-            n_estimators = params_xgboost['n_estimators'],
-            max_depth = params_xgboost['max_depth'],
-            min_child_weight = params_xgboost['min_child_weight'],
-            subsample = params_xgboost['subsample'],
-            colsample_bytree = params_xgboost['colsample_bytree'],
-            gamma = params_xgboost['gamma'],
-            alpha = params_xgboost['alpha'],
-            reg_lambda = params_xgboost['reg_lambda'],
-            random_state = params_xgboost['random_state']
+            booster = model_params['booster'],
+            objective = model_params['objective'],
+            learning_rate = model_params['learning_rate'],
+            n_estimators = model_params['n_estimators'],
+            max_depth = model_params['max_depth'],
+            min_child_weight = model_params['min_child_weight'],
+            subsample = model_params['subsample'],
+            colsample_bytree = model_params['colsample_bytree'],
+            gamma = model_params['gamma'],
+            alpha = model_params['alpha'],
+            reg_lambda = model_params['reg_lambda'],
+            random_state = model_params['random_state']
         )
 
     #================================
@@ -194,9 +187,9 @@ if __name__ == '__main__':
     if( args.train_type == "train" ):
         evals_result = {}
         model = xgb.train(
-            params_xgboost, X_train_dmat, 
-            num_boost_round = params_xgboost["num_boost_round"],
-            early_stopping_rounds = params_xgboost["early_stopping_rounds"],
+            model_params, X_train_dmat, 
+            num_boost_round = model_train_params["num_boost_round"],
+            early_stopping_rounds = model_train_params["early_stopping_rounds"],
             evals = [ (X_train_dmat, 'train'), (X_valid_dmat, 'val') ],
             evals_result = evals_result
         )
@@ -238,12 +231,12 @@ if __name__ == '__main__':
     #================================
     # loss
     if( args.train_type == "train" ):
-        plt.plot(evals_result['train'][params_xgboost["eval_metric"]], label='train')
-        plt.plot(evals_result['val'][params_xgboost["eval_metric"]], label='val')
+        plt.plot(evals_result['train'][model_train_params["eval_metric"]], label='train')
+        plt.plot(evals_result['val'][model_train_params["eval_metric"]], label='val')
 
         plt.xlabel('iters')
-        plt.ylabel(params_xgboost["eval_metric"])
-        plt.xlim( [0,params_xgboost["num_boost_round"]+1] )
+        plt.ylabel(model_train_params["eval_metric"])
+        plt.xlim( [0,model_train_params["num_boost_round"]+1] )
         plt.grid()
         plt.legend()
         plt.tight_layout()

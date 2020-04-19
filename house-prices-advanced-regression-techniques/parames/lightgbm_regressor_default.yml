@@ -1,0 +1,25 @@
+{
+    # LightGBM の回帰タスクのデフォルトパラメーター
+    "model": {
+        "name" : "lightgbm_regressor_default",
+        "model_params": {
+            'task' : 'train',                   # 
+            'boosting_type': 'gbdt',
+            'objective': 'regression',          # 回帰
+            'metric': 'rmse',                   # 評価指標
+            "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
+            "n_estimators" : 1000,              # 
+            'num_leaves': 31,                   # 
+            'min_data_in_leaf': 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う
+            'bagging_fraction': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+            'lambda_l1': 1.0,                   # デフォルト値としておく。余裕があれば変更
+            'lambda_l2': 0.0,                   # デフォルト値としておく。余裕があれば変更
+            "random_state": 71,        
+            "device_type": "cpu",               # 
+        },
+        "train_params": {
+            "num_boost_round": 1000,            # 試行回数
+            "early_stopping_rounds": 100,       # early stopping を行う繰り返し回数
+        },
+    },
+}

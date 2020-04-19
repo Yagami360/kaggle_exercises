@@ -2,6 +2,7 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import yaml
 import random
 import warnings
 from matplotlib import pyplot as plt
@@ -14,25 +15,6 @@ from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error
 import lightgbm as lgb
 
-# LightGBM のデフォルトハイパーパラメーター
-model_params = {
-    'task' : 'train',                   # 
-    'boosting_type': 'gbdt',
-    'objective': 'regression',          # 回帰
-    'metric': 'rmse',                   # 評価指標
-    "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
-    "n_estimators" : 1000,              # 
-    'num_leaves': 31,                   # 
-    'min_data_in_leaf': 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う
-    'bagging_fraction': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'lambda_l1': 1.0,                   # デフォルト値としておく。余裕があれば変更
-    'lambda_l2': 0.0,                   # デフォルト値としておく。余裕があれば変更
-    "num_boost_round": 1000,            # 試行回数
-    "early_stopping_rounds": 100,       # early stopping を行う繰り返し回数
-    'random_state': 71,
-    "device_type": "cpu",               # 
-}
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -41,6 +23,7 @@ if __name__ == '__main__':
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="house-prices-advanced-regression-techniques")
+    parser.add_argument("--params_file", type=str, default="parames/lightgbm_regressor_default.yml")
     parser.add_argument('--train_type', choices=['train', 'fit'], default="train", help="LightBGM の学習タイプ")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument('--target_norm', action='store_true')
@@ -148,9 +131,8 @@ if __name__ == '__main__':
         print( "ds_test.head() : \n", ds_test.head() )
 
     #===========================================
-    # k-fold CV による処理
-    #===========================================
     # 学習用データセットとテスト用データセットの設定
+    #===========================================
     X_train = ds_train.drop('SalePrice', axis = 1)
     X_test = ds_test
     y_train = ds_train['SalePrice']
@@ -162,6 +144,17 @@ if __name__ == '__main__':
         #print( "X_train.head() : \n", X_train.head() )
         #print( "X_test.head() : \n", X_test.head() )
         #print( "y_train.head() : \n", y_train.head() )
+
+    #===========================================
+    # k-fold CV による学習 & 推論処理
+    #===========================================
+    # モデルのパラメータの読み込み
+    with open( args.params_file ) as f:
+        params = yaml.safe_load(f)
+        model_params = params["model"]["model_params"]
+        model_train_params = params["model"]["train_params"]
+        if( args.debug ):
+            print( "params :\n", params )
 
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
     # StratifiedKFold は連続値では無効なので、通常の k-fold を使用
@@ -211,8 +204,8 @@ if __name__ == '__main__':
                 X_train_fold_lgb, 
                 valid_sets = [ X_train_fold_lgb, X_valid_fold_lgb ],
                 valid_names = ['train', 'val'],
-                num_boost_round = model_params["num_boost_round"],
-                early_stopping_rounds = model_params["early_stopping_rounds"],
+                num_boost_round = model_train_params["num_boost_round"],
+                early_stopping_rounds = model_train_params["early_stopping_rounds"],
                 evals_result = evals_result
             )
             evals_results.append(evals_result)
@@ -280,7 +273,7 @@ if __name__ == '__main__':
 
         plt.xlabel('iters')
         plt.ylabel(model_params["metric"])
-        plt.xlim( [0,model_params["num_boost_round"]+1] )
+        plt.xlim( [0,model_train_params["num_boost_round"]+1] )
         plt.grid()
         plt.legend()
         plt.tight_layout()

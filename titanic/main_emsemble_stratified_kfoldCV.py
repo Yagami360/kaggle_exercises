@@ -3,6 +3,7 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import yaml
 import random
 import warnings
 from kaggle.api.kaggle_api_extended import KaggleApi
@@ -22,22 +23,6 @@ from xgboost import XGBClassifier
 from models import EnsembleModelClassifier
 
 
-# XGBoost のデフォルトハイパーパラメーター
-params_xgboost = {
-    'booster': 'gbtree',
-    'objective': 'binary:logistic',
-    "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
-    "n_estimators" : 1043,
-    'max_depth': 6,                     # 3 ~ 9 : 一様分布に従う。1刻み
-    'min_child_weight': 0.47,           # 0.1 ~ 10.0 : 対数が一様分布に従う
-    'subsample': 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'colsample_bytree': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'gamma': 1.15e-05,                  # 1e-8 ~ 1.0 : 対数が一様分布に従う
-    'alpha': 0.0,                       # デフォルト値としておく。余裕があれば変更
-    'reg_lambda': 1.0,                  # デフォルト値としておく。余裕があれば変更
-    'random_state': 71,
-}
-
 if __name__ == '__main__':
     """
     stratified k-fold cross validation で学習用データセットを分割して学習＆評価
@@ -49,6 +34,7 @@ if __name__ == '__main__':
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="titanic")
+    parser.add_argument("--params_file", type=str, default="parames/xgboost_classifier_titanic.yml")
     parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
@@ -109,9 +95,8 @@ if __name__ == '__main__':
         print( "ds_test.head() : \n", ds_test.head() )
 
     #===========================================
-    # k-fold CV による処理
-    #===========================================
     # 学習用データセットとテスト用データセットの設定
+    #===========================================
     X_train = ds_train.drop('Survived', axis = 1)
     X_test = ds_test
     y_train = ds_train['Survived']
@@ -120,6 +105,17 @@ if __name__ == '__main__':
         print( "len(X_train) : ", len(X_train) )
         print( "len(y_train) : ", len(y_train) )
         print( "len(y_pred_val) : ", len(y_pred_val) )
+
+    #===========================================
+    # k-fold CV による学習 & 推論処理
+    #===========================================
+    # モデルのパラメータの読み込み
+    with open( args.params_file ) as f:
+        params = yaml.safe_load(f)
+        xgboost_params = params["model"]["model_params"]
+        xgboost_train_params = params["model"]["train_params"]
+        if( args.debug ):
+            print( "params :\n", params )
 
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
     kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
@@ -136,18 +132,18 @@ if __name__ == '__main__':
         # モデル定義
         #--------------------
         xgboost = XGBClassifier(
-            booster = params_xgboost['booster'],
-            objective = params_xgboost['objective'],
-            learning_rate = params_xgboost['learning_rate'],
-            n_estimators = params_xgboost['n_estimators'],
-            max_depth = params_xgboost['max_depth'],
-            min_child_weight = params_xgboost['min_child_weight'],
-            subsample = params_xgboost['subsample'],
-            colsample_bytree = params_xgboost['colsample_bytree'],
-            gamma = params_xgboost['gamma'],
-            alpha = params_xgboost['alpha'],
-            reg_lambda = params_xgboost['reg_lambda'],
-            random_state = params_xgboost['random_state']
+            booster = xgboost_params['booster'],
+            objective = xgboost_params['objective'],
+            learning_rate = xgboost_params['learning_rate'],
+            n_estimators = xgboost_params['n_estimators'],
+            max_depth = xgboost_params['max_depth'],
+            min_child_weight = xgboost_params['min_child_weight'],
+            subsample = xgboost_params['subsample'],
+            colsample_bytree = xgboost_params['colsample_bytree'],
+            gamma = xgboost_params['gamma'],
+            alpha = xgboost_params['alpha'],
+            reg_lambda = xgboost_params['reg_lambda'],
+            random_state = xgboost_params['random_state']
         )
 
         kNN = KNeighborsClassifier(
