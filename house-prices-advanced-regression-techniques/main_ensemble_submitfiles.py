@@ -17,7 +17,6 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor
 import xgboost as xgb
-import optuna
 
 from models import EnsembleRegressor, RegressorXGBoost
 
@@ -40,91 +39,15 @@ params_xgboost = {
     'random_state': 71,
 }
 
-def objective_wrapper(args, X_train, y_train):
-    """
-    objective に trial 以外の引数を指定可能にするためのラッパーメソッド
-    """
-    def objective(trial):
-        #--------------------------------------------
-        # ベイズ最適化でのチューニングパイパーパラメーター
-        #--------------------------------------------
-        params = {
-            'weights1': trial.suggest_discrete_uniform('weights1', 0.00, 0.50, 0.10),
-            'weights2': trial.suggest_discrete_uniform('weights2', 0.00, 0.50, 0.10),
-            'weights3': trial.suggest_discrete_uniform('weights3', 0.00, 1.00, 0.10),
-            'weights4': trial.suggest_discrete_uniform('weights4', 0.50, 1.00, 0.10),            
-        }
-
-        #--------------------------------------------
-        # k-fold CV での評価
-        #--------------------------------------------
-        # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-        # StratifiedKFold は連続値では無効なので、通常の k-fold を使用
-        kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
-        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
-            #--------------------
-            # データセットの分割
-            #--------------------
-            X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
-            y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
-
-            #--------------------
-            # モデルの定義
-            #--------------------
-            knn = KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski', n_jobs = -1 )
-            svr = SVR( kernel = 'rbf', C = 0.1 )
-            random_forest = RandomForestRegressor( criterion = "mse", bootstrap = True, n_estimators = 1001, oob_score = True, n_jobs = -1, random_state = args.seed )
-
-            xgboost = xgb.XGBRegressor(
-                booster = params_xgboost['booster'],
-                objective = params_xgboost['objective'],
-                learning_rate = params_xgboost['learning_rate'],
-                n_estimators = params_xgboost['n_estimators'],
-                max_depth = params_xgboost['max_depth'],
-                min_child_weight = params_xgboost['min_child_weight'],
-                subsample = params_xgboost['subsample'],
-                colsample_bytree = params_xgboost['colsample_bytree'],
-                gamma = params_xgboost['gamma'],
-                alpha = params_xgboost['alpha'],
-                reg_lambda = params_xgboost['reg_lambda'],
-                random_state = params_xgboost['random_state']                    
-            )
-
-            ensemble = EnsembleRegressor(
-                regressors  = [ knn, svr, random_forest, xgboost ],
-                weights = [ params["weights1"], params["weights2"], params["weights3"], params["weights4"] ],
-                fitting = [ True, True, True, True ],
-            )
-
-            #--------------------
-            # モデルの学習処理
-            #--------------------
-            ensemble.fit(X_train_fold, y_train_fold)
-
-            #--------------------
-            # モデルの推論処理
-            #--------------------
-            y_pred_val[valid_index] = ensemble.predict(X_valid_fold)
-
-        if( args.target_norm ):
-            rmse = np.sqrt( mean_squared_error( np.exp(y_train), np.exp(y_pred_val) ) ) 
-        else:
-            rmse = np.sqrt( mean_squared_error(y_train, y_pred_val) )
-
-        return rmse
-
-    return objective
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="ensemble_gridsearch", help="実験名")
+    parser.add_argument("--exper_name", default="ensemble_submitfiles", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="house-prices-advanced-regression-techniques")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
-    parser.add_argument("--n_splits_gs", type=int, default=1, help="ハイパーパラメーターチューニング時の CV での学習用データセットの分割数")
-    parser.add_argument("--n_trials", type=int, default=50, help="Optuna での試行回数")
     parser.add_argument('--target_norm', action='store_true')
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
@@ -151,11 +74,11 @@ if __name__ == '__main__':
     #================================
     ds_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
     ds_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
-    ds_sample_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
+    ds_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
     if( args.debug ):
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
-        print( "ds_sample_submission.head() : \n", ds_sample_submission.head() )
+        print( "ds_submission.head() : \n", ds_submission.head() )
 
     #================================
     # 前処理
@@ -229,52 +152,177 @@ if __name__ == '__main__':
         print( "ds_test.head() : \n", ds_test.head() )
 
     #===========================================
-    # k-fold CV による処理
+    # データセットの設定
     #===========================================
     # 学習用データセットとテスト用データセットの設定
     X_train = ds_train.drop('SalePrice', axis = 1)
     X_test = ds_test
     y_train = ds_train['SalePrice']
-    y_pred_val = np.zeros((len(y_train),))
     if( args.debug ):
         print( "len(X_train) : ", len(X_train) )
         print( "len(y_train) : ", len(y_train) )
-        print( "len(y_pred_val) : ", len(y_pred_val) )
         #print( "X_train.head() : \n", X_train.head() )
         #print( "X_test.head() : \n", X_test.head() )
         #print( "y_train.head() : \n", y_train.head() )
 
-    #==============================
-    # Optuna によるハイパーパラメーターのチューニング
-    #==============================
-    study = optuna.create_study(direction="minimize")
-    study.optimize(objective_wrapper(args, X_train,y_train), n_trials=args.n_trials)
-    print('best params : ', study.best_params)
-    #print('best best_trial : ', study.best_trial)
-
-    #================================
-    # 最良モデルでの学習 & 推論
-    #================================
-    # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-    # StratifiedKFold は連続値では無効なので、通常の k-fold を使用
     kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
+    #================================
+    # knn での学習 & 推論
+    #================================
+    y_pred_val = np.zeros((len(y_train),))
     y_preds = []
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
-        #--------------------
         # データセットの分割
-        #--------------------
         X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
         y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
 
-        #--------------------
         # 回帰モデル定義
-        #--------------------
-        knn = KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski', n_jobs = -1 )
-        svr = SVR( kernel = 'rbf', C = 0.1 )
-        random_forest = RandomForestRegressor( criterion = "mse", bootstrap = True, n_estimators = 1001, oob_score = True, n_jobs = -1, random_state = args.seed )
+        model = KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski', n_jobs = -1 )
 
-        xgboost = xgb.XGBRegressor(
+        # モデルの学習処理
+        model.fit(X_train, y_train)
+
+        # モデルの推論処理
+        y_pred_test = model.predict(X_test)
+        y_preds.append(y_pred_test)
+        y_pred_val[valid_index] = model.predict(X_valid_fold)
+    
+    # 正解データとの平均2乗平方根誤差で評価
+    if( args.target_norm ):
+        rmse = np.sqrt( mean_squared_error( np.exp(y_train), np.exp(y_pred_val) ) ) 
+    else:
+        rmse = np.sqrt( mean_squared_error(y_train, y_pred_val) )
+
+    print( "knn | RMSE [val] : {:0.5f}".format(rmse) )
+
+    # 可視化処理
+    sns.distplot(ds_train['SalePrice'] )
+    sns.distplot(y_pred_val)
+    if( args.target_norm ):
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "knn_SalePrice_w_norm.png"), dpi = 300, bbox_inches = 'tight' )
+    else:
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "knn_SalePrice_wo_norm.png"), dpi = 300, bbox_inches = 'tight' )
+
+    # submit file に値を設定
+    y_preds = sum(y_preds) / len(y_preds)
+    #sub = ds_submission.copy()
+    if( args.target_norm ):
+        ds_submission['SalePrice'] = list(map(float, np.exp(y_preds)))
+    else:
+        ds_submission['SalePrice'] = list(map(float, y_preds))
+
+    ds_submission.to_csv( os.path.join(args.results_dir, args.exper_name, "knn_" + args.submit_file), index=False)
+
+    #================================
+    # SVR での学習 & 推論
+    #================================
+    kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+    y_pred_val = np.zeros((len(y_train),))
+    y_preds = []
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        # データセットの分割
+        X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+        y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
+
+        # 回帰モデル定義
+        model = SVR( kernel = 'rbf', C = 10.0 )
+
+        # モデルの学習処理
+        model.fit(X_train, y_train)
+
+        # モデルの推論処理
+        y_pred_test = model.predict(X_test)
+        y_preds.append(y_pred_test)
+        y_pred_val[valid_index] = model.predict(X_valid_fold)
+    
+    # 正解データとの平均2乗平方根誤差で評価
+    if( args.target_norm ):
+        rmse = np.sqrt( mean_squared_error( np.exp(y_train), np.exp(y_pred_val) ) ) 
+    else:
+        rmse = np.sqrt( mean_squared_error(y_train, y_pred_val) )
+
+    print( "svr | RMSE [val] : {:0.5f}".format(rmse) )
+
+    # 可視化処理
+    sns.distplot(ds_train['SalePrice'] )
+    sns.distplot(y_pred_val)
+    if( args.target_norm ):
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "svr_SalePrice_w_norm.png"), dpi = 300, bbox_inches = 'tight' )
+    else:
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "svr_SalePrice_wo_norm.png"), dpi = 300, bbox_inches = 'tight' )
+
+    # submit file に値を設定
+    y_preds = sum(y_preds) / len(y_preds)
+    #sub = ds_submission.copy()
+    if( args.target_norm ):
+        ds_submission['SalePrice'] = list(map(float, np.exp(y_preds)))
+    else:
+        ds_submission['SalePrice'] = list(map(float, y_preds))
+
+    ds_submission.to_csv( os.path.join(args.results_dir, args.exper_name, "svr_" + args.submit_file), index=False)
+
+    #================================
+    # random forest での学習 & 推論
+    #================================
+    kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+    y_pred_val = np.zeros((len(y_train),))
+    y_preds = []
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        # データセットの分割
+        X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+        y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
+
+        # 回帰モデル定義
+        model = RandomForestRegressor( criterion = "mse", bootstrap = True, n_estimators = 1001, oob_score = True, n_jobs = -1, random_state = args.seed )
+
+        # モデルの学習処理
+        model.fit(X_train, y_train)
+
+        # モデルの推論処理
+        y_pred_test = model.predict(X_test)
+        y_preds.append(y_pred_test)
+        y_pred_val[valid_index] = model.predict(X_valid_fold)
+    
+    # 正解データとの平均2乗平方根誤差で評価
+    if( args.target_norm ):
+        rmse = np.sqrt( mean_squared_error( np.exp(y_train), np.exp(y_pred_val) ) ) 
+    else:
+        rmse = np.sqrt( mean_squared_error(y_train, y_pred_val) )
+
+    print( "random_forest | RMSE [val] : {:0.5f}".format(rmse) )
+
+    # 可視化処理
+    sns.distplot(ds_train['SalePrice'] )
+    sns.distplot(y_pred_val)
+    if( args.target_norm ):
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "random_forest_SalePrice_w_norm.png"), dpi = 300, bbox_inches = 'tight' )
+    else:
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "random_forest_SalePrice_wo_norm.png"), dpi = 300, bbox_inches = 'tight' )
+
+    # submit file に値を設定
+    y_preds = sum(y_preds) / len(y_preds)
+    #sub = ds_submission.copy()
+    if( args.target_norm ):
+        ds_submission['SalePrice'] = list(map(float, np.exp(y_preds)))
+    else:
+        ds_submission['SalePrice'] = list(map(float, y_preds))
+
+    ds_submission.to_csv( os.path.join(args.results_dir, args.exper_name, "random_forest_" + args.submit_file), index=False)
+
+    #================================
+    # XGBoost での学習 & 推論
+    #================================
+    kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+    y_pred_val = np.zeros((len(y_train),))
+    y_preds = []
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        # データセットの分割
+        X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+        y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
+
+        # 回帰モデル定義
+        model = xgb.XGBRegressor(
             booster = params_xgboost['booster'],
             objective = params_xgboost['objective'],
             learning_rate = params_xgboost['learning_rate'],
@@ -289,25 +337,13 @@ if __name__ == '__main__':
             random_state = params_xgboost['random_state']                    
         )
 
-        ensemble = EnsembleRegressor(
-            regressors  = [ knn, svr, random_forest, xgboost ],
-            weights = [study.best_params["weights1"], study.best_params["weights2"], study.best_params["weights3"], study.best_params["weights4"] ],
-            fitting = [ True, True, True, True ],
-        )
-
-        #--------------------
         # モデルの学習処理
-        #--------------------
-        ensemble.fit(X_train, y_train)
+        model.fit(X_train, y_train)
 
-        #--------------------
         # モデルの推論処理
-        #--------------------
-        y_pred_test = ensemble.predict(X_test)
+        y_pred_test = model.predict(X_test)
         y_preds.append(y_pred_test)
-
-        y_pred_val[valid_index] = ensemble.predict(X_valid_fold)
-        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_val)) )
+        y_pred_val[valid_index] = model.predict(X_valid_fold)
     
     # 正解データとの平均2乗平方根誤差で評価
     if( args.target_norm ):
@@ -315,32 +351,54 @@ if __name__ == '__main__':
     else:
         rmse = np.sqrt( mean_squared_error(y_train, y_pred_val) )
 
-    print( "RMSE [val] : {:0.5f}".format(rmse) )
+    print( "xgboost | RMSE [val] : {:0.5f}".format(rmse) )
 
-    #================================
     # 可視化処理
-    #================================
-    # 回帰対象
     sns.distplot(ds_train['SalePrice'] )
     sns.distplot(y_pred_val)
     if( args.target_norm ):
-        plt.savefig( os.path.join(args.results_dir, args.exper_name, "SalePrice_w_norm.png"), dpi = 300, bbox_inches = 'tight' )
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "xgboost_SalePrice_w_norm.png"), dpi = 300, bbox_inches = 'tight' )
     else:
-        plt.savefig( os.path.join(args.results_dir, args.exper_name, "SalePrice_wo_norm.png"), dpi = 300, bbox_inches = 'tight' )
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "xgboost_SalePrice_wo_norm.png"), dpi = 300, bbox_inches = 'tight' )
+
+    # submit file に値を設定
+    y_preds = sum(y_preds) / len(y_preds)
+    #sub = ds_submission.copy()
+    if( args.target_norm ):
+        ds_submission['SalePrice'] = list(map(float, np.exp(y_preds)))
+    else:
+        ds_submission['SalePrice'] = list(map(float, y_preds))
+
+    ds_submission.to_csv( os.path.join(args.results_dir, args.exper_name, "xgboost_" + args.submit_file), index=False)
+
+    #================================
+    # アンサンブル
+    #================================
+    ensemble = EnsembleRegressor(
+        weights = [0.01, 0.01, 0.4, 1.00 ],
+    )
+
+    y_preds = ensemble.predict_from_submit_files(
+        key = "SalePrice",
+        submit_files = [ 
+            os.path.join(args.results_dir, args.exper_name, "knn_" + args.submit_file),
+            os.path.join(args.results_dir, args.exper_name, "svr_" + args.submit_file),
+            os.path.join(args.results_dir, args.exper_name, "random_forest_" + args.submit_file),
+            os.path.join(args.results_dir, args.exper_name, "xgboost_" + args.submit_file),
+         ],
+    )
+
+    # 提出用データに値を設定
+    if( args.target_norm ):
+        ds_submission['SalePrice'] = list(map(float, np.exp(y_preds)))
+    else:
+        ds_submission['SalePrice'] = list(map(float, y_preds))
+
+    ds_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
 
     #================================
     # Kaggle API での submit
     #================================
-    # 提出用データに値を設定
-    y_sub = sum(y_preds) / len(y_preds)
-    sub = ds_sample_submission
-    if( args.target_norm ):
-        sub['SalePrice'] = list(map(float, np.exp(y_sub)))
-    else:
-        sub['SalePrice'] = list(map(float, y_sub))
-
-    sub.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
-
     if( args.submit ):
         # Kaggle-API で submit
         api = KaggleApi()

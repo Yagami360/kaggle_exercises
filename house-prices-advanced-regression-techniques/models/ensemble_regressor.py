@@ -2,6 +2,7 @@
 import os
 import numpy as np
 from tqdm import tqdm
+import pandas as pd
 
 # scikit-learn ライブラリ関連
 from sklearn.base import BaseEstimator              
@@ -16,7 +17,7 @@ class EnsembleRegressor( BaseEstimator, RegressorMixin ):
     アンサンブルモデルの回帰器 regressor の自作クラス.
     scikit-learn ライブラリの推定器 estimator の基本クラス BaseEstimator, RegressorMixin を継承している.
     """
-    def __init__( self, regressors, weights = None, fitting = None, debug = False ):
+    def __init__( self, regressors = None, weights = None, fitting = None, debug = False ):
         """
         Args :
             regressors : list <regressors オブジェクト>
@@ -48,7 +49,7 @@ class EnsembleRegressor( BaseEstimator, RegressorMixin ):
             for i, named_classifier in enumerate(self.named_regressors):
                 print( "name {} : {}".format(i, self.named_regressors[named_classifier]) )
 
-        if fitting == None:
+        if regressors != None and fitting == None:
             fitting = []
             for i in range(len(self.regressors)):
                 fitting.append(True)
@@ -71,6 +72,9 @@ class EnsembleRegressor( BaseEstimator, RegressorMixin ):
             self : 自身のオブジェクト
 
         """
+        if( self.regressors == None ):
+            return self
+
         # self.regressors に設定されている分類器のクローン clone(reg) で fitting
         self.fitted_regressors = []
         for i, reg in enumerate( tqdm(self.regressors, desc = "fitting regressors") ):
@@ -96,6 +100,9 @@ class EnsembleRegressor( BaseEstimator, RegressorMixin ):
             vote_results : np.ndaary ( shape = [n_samples] )
                 予想結果（クラスラベル）
         """
+        if( self.fitted_regressors == None ):
+            return
+
         # 各弱回帰器 reg の predict_prpba() 結果を predictions (list) に格納
         predict_probas = np.asarray( [ reg.predict(X_test) for reg in self.fitted_regressors ] )     # shape = [n_classifer, n_features]
 
@@ -104,5 +111,12 @@ class EnsembleRegressor( BaseEstimator, RegressorMixin ):
 
         return ave_probas
 
+    def predict_from_submit_files( self, key, submit_files = [] ):
+        predict_probas = []
+        for i, submit_file in enumerate( submit_files ):
+            ds_submission = pd.read_csv( submit_file )
+            predict_proba = ds_submission[key]
+            predict_probas.append( predict_proba )
 
-
+        ave_probas = np.average( predict_probas, axis = 0, weights = self.weights )
+        return ave_probas
