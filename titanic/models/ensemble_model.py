@@ -2,6 +2,7 @@
 import os
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 # scikit-learn ライブラリ関連
 from sklearn.base import BaseEstimator              # 推定器 Estimator の上位クラス. get_params(), set_params() 関数が定義されている.
@@ -10,6 +11,8 @@ from sklearn.preprocessing import LabelEncoder      #
 
 from sklearn.pipeline import _name_estimators       # 
 from sklearn.base import clone                      #
+
+from sklearn.model_selection import StratifiedKFold
 
 class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
     """
@@ -155,3 +158,138 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
         #print( "EnsembleLearningClassifier.predict_proba() { ave_probas } : \n", ave_probas )
 
         return ave_probas
+
+
+class EnsembleStackingModelClassifier( BaseEstimator, ClassifierMixin ):
+    def __init__( self, classifiers, final_classifiers, n_splits = 4, seed = 72 ):
+        self.classifiers = classifiers
+        self.final_classifiers = final_classifiers
+        self.fitted_classifiers = classifiers
+        self.n_classifier = len( classifiers )
+        self.n_splits = n_splits
+        self.seed = seed
+
+        # classifiers　で指定した各オブジェクトの名前
+        if classifiers != None:
+            self.named_classifiers = { key: value for key, value in _name_estimators(classifiers) }
+        else:
+            self.named_classifiers = {}
+
+        for i, named_classifier in enumerate(self.named_classifiers):
+            print( "name {} : {}".format(i, self.named_classifiers[named_classifier]) )
+
+        return
+
+    def fit( self, X_train, y_train, X_test ):
+        #--------------------------------
+        # １段目の k-fold CV での学習 & 推論
+        #--------------------------------
+        kf = StratifiedKFold( n_splits=self.n_splits, shuffle=True, random_state=self.seed )
+        y_preds_train = np.zeros( (self.n_classifier, len(y_train)) )
+        y_preds_test = np.zeros( (self.n_classifier, self.n_splits, len(X_test)) )
+        #print( "y_preds_train.shape : ", y_preds_train.shape )
+        #print( "y_preds_test.shape : ", y_preds_test.shape )
+
+        k = 0
+        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
+            #--------------------
+            # データセットの分割
+            #--------------------
+            X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+            y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
+
+            #-------------------
+            # 各モデルの学習処理
+            #-------------------
+            self.fitted_classifiers = []
+            for i, clf in enumerate( tqdm(self.classifiers, desc="fitting classifiers") ):
+                # clone() : 同じパラメータの 推定器を生成
+                fitted_clf = clone(clf).fit( X_train_fold, y_train_fold )
+                self.fitted_classifiers.append( fitted_clf )
+
+            #-------------------
+            # 各モデルの推論処理
+            #-------------------
+            for i, clf in enumerate(self.fitted_classifiers):
+                y_preds_train[i][valid_index] = clf.predict(X_valid_fold)
+                y_preds_test[i][k] = clf.predict(X_test)
+
+            k += 1
+
+        # テストデータに対する予測値の k-fold CV の平均をとる
+        y_preds_test = np.mean( y_preds_test, axis=1 )
+        #print( "y_preds_test.shape : ", y_preds_test.shape )
+
+        # 各モデルの予想値をスタッキング
+        y_preds_train_stack = y_preds_train[0]
+        y_preds_test_stack = y_preds_test[0]
+        for i in range(self.n_classifier - 1):
+            y_preds_train_stack = np.column_stack( (y_preds_train_stack, y_preds_train[i+1]) )
+            y_preds_test_stack = np.column_stack( (y_preds_test_stack, y_preds_test[i+1]) )
+
+        y_preds_train = y_preds_train_stack
+        y_preds_test = y_preds_test_stack
+        #print( "y_preds_train.shape : ", y_preds_train.shape )
+        #print( "y_preds_test.shape : ", y_preds_test.shape )
+
+        # 予測値を新たな特徴量としてデータフレーム作成
+        X_train = pd.DataFrame(y_preds_train)
+        X_test = pd.DataFrame(y_preds_test)
+
+        #--------------------------------
+        # ２段目の k-fold CV での学習 & 推論
+        #--------------------------------
+        y_preds_train = np.zeros( (len(y_train)) )
+        y_preds_test = np.zeros( (self.n_splits, len(X_test)) )
+        k = 0
+        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
+            #--------------------
+            # データセットの分割
+            #--------------------
+            X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+            y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
+
+            #-------------------
+            # 各モデルの学習処理
+            #-------------------
+            self.final_classifiers.fit( X_train_fold, y_train_fold )
+
+            #-------------------
+            # 各モデルの推論処理
+            #-------------------
+            y_preds_train[valid_index] = self.final_classifiers.predict(X_valid_fold)
+            y_preds_test[k] = self.final_classifiers.predict(X_test)
+            k += 1
+
+        # テストデータに対する予測値の平均をとる
+        y_preds_test = np.mean( y_preds_test, axis=0 )
+        #print( "y_preds_test.shape : ", y_preds_test.shape )        
+        return self
+
+    def predict( self, X_test ):
+        #------------------------
+        # １段目の各モデルの推論処理
+        #------------------------
+        y_preds_test = np.zeros( (self.n_classifier, len(X_test)) )
+        for i, clf in enumerate(self.fitted_classifiers):
+            y_preds_test[i] = clf.predict(X_test)
+
+        # 各モデルの予想値をスタッキング
+        y_preds_test_stack = y_preds_test[0]
+        for i in range(self.n_classifier - 1):
+            y_preds_test_stack = np.column_stack( (y_preds_test_stack, y_preds_test[i+1]) )
+
+        y_preds_test = y_preds_test_stack
+
+        # 予測値を新たな特徴量としてデータフレーム作成
+        X_test = pd.DataFrame(y_preds_test)
+
+        #------------------------
+        # ２段目の各モデルの推論処理
+        #------------------------
+        y_preds_test = self.final_classifiers.predict(X_test)
+        return y_preds_test
+
+
+    def predict_proba( self, X_test ):
+        return
