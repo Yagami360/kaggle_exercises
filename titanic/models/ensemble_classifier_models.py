@@ -7,19 +7,18 @@ from tqdm import tqdm
 # scikit-learn ライブラリ関連
 from sklearn.base import BaseEstimator              # 推定器 Estimator の上位クラス. get_params(), set_params() 関数が定義されている.
 from sklearn.base import ClassifierMixin            # 推定器 Estimator の上位クラス. score() 関数が定義されている.
-from sklearn.preprocessing import LabelEncoder      # 
-
-from sklearn.pipeline import _name_estimators       # 
-from sklearn.base import clone                      #
-
+from sklearn.preprocessing import LabelEncoder
+from sklearn.pipeline import _name_estimators
+from sklearn.base import clone
 from sklearn.model_selection import StratifiedKFold
 
-class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
+
+class EnsembleBlendingClassifier( BaseEstimator, ClassifierMixin ):
     """
     アンサンブルモデルの識別器 classifier の自作クラス.
     scikit-learn ライブラリの推定器 estimator の基本クラス BaseEstimator, ClassifierMixin を継承している.
     """
-    def __init__( self, classifiers, weights = None, vote_method = "majority_vote" ):
+    def __init__( self, classifiers, weights = None, vote_method = "majority_vote", clone = False ):
         """
         Args :
             classifiers : list <classifier オブジェクト>
@@ -35,12 +34,9 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
         self.fitted_classifiers = classifiers
         self.weights = weights
         self.n_classes = 0
-        if classifiers != None:
-            self.n_classifier = len( classifiers )
-        else:
-            self.n_classifier = 0
-
+        self.n_classifier = len( classifiers )
         self.vote_method = vote_method
+        self.clone = clone
         self.encoder = LabelEncoder()
 
         # classifiers　で指定した各オブジェクトの名前
@@ -78,8 +74,12 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
         # self.classifiers に設定されている分類器のクローン clone(clf) で fitting
         self.fitted_classifiers = []
         for clf in self.classifiers:
-            # clone() : 同じパラメータの 推定器を生成
-            fitted_clf = clone(clf).fit( X_train, self.encoder.transform(y_train) )
+            if( self.clone ):
+                # clone() : 同じパラメータの 推定器を生成
+                fitted_clf = clone(clf).fit( X_train, self.encoder.transform(y_train) )
+            else:
+                fitted_clf = clf.fit( X_train, self.encoder.transform(y_train) )
+
             self.fitted_classifiers.append( fitted_clf )
 
         return self
@@ -95,9 +95,6 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
             vote_results : np.ndaary ( shape = [n_samples] )
                 予想結果（クラスラベル）
         """
-        # 初期化
-        #vote_results = []
-
         #------------------------------------------------------------------------------------------------------
         # アンサンブルの最終決定方式 vote_method が, 各弱識別器の重み付け方式 "probability_vote" のケース
         #------------------------------------------------------------------------------------------------------
@@ -160,14 +157,16 @@ class EnsembleModelClassifier( BaseEstimator, ClassifierMixin ):
         return ave_probas
 
 
-class EnsembleStackingModelClassifier( BaseEstimator, ClassifierMixin ):
-    def __init__( self, classifiers, final_classifiers, n_splits = 4, seed = 72 ):
+class EnsembleStackingClassifier( BaseEstimator, ClassifierMixin ):
+    def __init__( self, classifiers, final_classifiers, n_splits = 4, clone = False, seed = 72 ):
         self.classifiers = classifiers
         self.final_classifiers = final_classifiers
         self.fitted_classifiers = classifiers
         self.n_classifier = len( classifiers )
         self.n_splits = n_splits
+        self.clone = clone
         self.seed = seed
+        self.accuracy = None
 
         # classifiers　で指定した各オブジェクトの名前
         if classifiers != None:
@@ -203,8 +202,11 @@ class EnsembleStackingModelClassifier( BaseEstimator, ClassifierMixin ):
             #-------------------
             self.fitted_classifiers = []
             for i, clf in enumerate( tqdm(self.classifiers, desc="fitting classifiers") ):
-                # clone() : 同じパラメータの 推定器を生成
-                fitted_clf = clone(clf).fit( X_train_fold, y_train_fold )
+                if( self.clone ):
+                    fitted_clf = clone(clf).fit( X_train_fold, y_train_fold, X_valid_fold, y_valid_fold )
+                else:
+                    fitted_clf = clf.fit( X_train_fold, y_train_fold, X_valid_fold, y_valid_fold )
+
                 self.fitted_classifiers.append( fitted_clf )
 
             #-------------------
@@ -252,7 +254,10 @@ class EnsembleStackingModelClassifier( BaseEstimator, ClassifierMixin ):
             #-------------------
             # 各モデルの学習処理
             #-------------------
-            self.final_classifiers.fit( X_train_fold, y_train_fold )
+            if( self.clone ):
+                clone(self.final_classifiers).fit( X_train_fold, y_train_fold, X_valid_fold, y_valid_fold )
+            else:
+                self.final_classifiers.fit( X_train_fold, y_train_fold, X_valid_fold, y_valid_fold )
 
             #-------------------
             # 各モデルの推論処理
@@ -261,12 +266,18 @@ class EnsembleStackingModelClassifier( BaseEstimator, ClassifierMixin ):
             y_preds_test[k] = self.final_classifiers.predict(X_test)
             k += 1
 
+        # 正解率の計算
+        self.accuracy = (y_train == y_preds_train).sum()/len(y_preds_train)
+        print( "[EnsembleStackingClassifier] accuracy [k-fold CV train vs valid] : {:0.5f}".format(self.accuracy) )
+
         # テストデータに対する予測値の平均をとる
-        y_preds_test = np.mean( y_preds_test, axis=0 )
+        self.y_preds_test = np.mean( y_preds_test, axis=0 )
         #print( "y_preds_test.shape : ", y_preds_test.shape )        
+        self.y_preds_train = y_preds_train
         return self
 
     def predict( self, X_test ):
+        """
         #------------------------
         # １段目の各モデルの推論処理
         #------------------------
@@ -288,8 +299,30 @@ class EnsembleStackingModelClassifier( BaseEstimator, ClassifierMixin ):
         # ２段目の各モデルの推論処理
         #------------------------
         y_preds_test = self.final_classifiers.predict(X_test)
-        return y_preds_test
+        """
+        return self.y_preds_test
 
 
     def predict_proba( self, X_test ):
-        return
+        #------------------------
+        # １段目の各モデルの推論処理
+        #------------------------
+        y_preds_test = np.zeros( (self.n_classifier, len(X_test)) )
+        for i, clf in enumerate(self.fitted_classifiers):
+            y_preds_test[i] = clf.predict_proba(X_test)
+
+        # 各モデルの予想値をスタッキング
+        y_preds_test_stack = y_preds_test[0]
+        for i in range(self.n_classifier - 1):
+            y_preds_test_stack = np.column_stack( (y_preds_test_stack, y_preds_test[i+1]) )
+
+        y_preds_test = y_preds_test_stack
+
+        # 予測値を新たな特徴量としてデータフレーム作成
+        X_test = pd.DataFrame(y_preds_test)
+
+        #------------------------
+        # ２段目の各モデルの推論処理
+        #------------------------
+        y_preds_test = self.final_classifiers.predict_proba(X_test)
+        return y_preds_test

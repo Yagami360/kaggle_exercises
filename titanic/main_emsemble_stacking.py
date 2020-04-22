@@ -6,11 +6,13 @@ import pandas as pd
 import yaml
 import random
 import warnings
+from matplotlib import pyplot as plt
+import seaborn as sns
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 from sklearn.model_selection import StratifiedKFold
 
-# models
+# 機械学習モデル
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
@@ -19,9 +21,11 @@ from sklearn.ensemble import BaggingClassifier          # バギング
 from sklearn.ensemble import AdaBoostClassifier         # AdaBoost
 from sklearn.ensemble import RandomForestClassifier     # 
 from sklearn.linear_model import LogisticRegression
-from xgboost import XGBClassifier
+import xgboost as xgb
 
-from models import EnsembleStackingModelClassifier
+# 自作クラス
+from models import SklearnClassifier, XGBoostClassifier, KerasDNNClassifier, KerasResNetClassifier
+from models import EnsembleStackingClassifier
 
 
 if __name__ == '__main__':
@@ -37,6 +41,7 @@ if __name__ == '__main__':
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument("--params_file", type=str, default="parames/xgboost_classifier_titanic.yml")
     parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
+    parser.add_argument('--output_type', choices=['fixed', 'proba'], default="fixed", help="出力形式（確定値 or 確率値）")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -109,44 +114,25 @@ if __name__ == '__main__':
     #===========================================
     # モデルの学習 & 推論処理
     #===========================================
-    # モデルのパラメータの読み込み
-    with open( args.params_file ) as f:
-        params = yaml.safe_load(f)
-        xgboost_params = params["model"]["model_params"]
-        xgboost_train_params = params["model"]["train_params"]
-        if( args.debug ):
-            print( "params :\n", params )
-
     #--------------------
     # モデル定義
     #--------------------
-    logistic = LogisticRegression( penalty='l2', solver="sag", random_state=args.seed )
-    kNN = KNeighborsClassifier( n_neighbors = 5, p = 2, metric = 'minkowski', n_jobs = -1 )
-    svm = SVC( kernel = 'rbf', gamma = 10.0, C = 0.1, random_state = args.seed, probability = True )
-    forest = RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True )
+    logistic = SklearnClassifier( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
+    kNN = SklearnClassifier( KNeighborsClassifier( n_neighbors = 5, p = 2, metric = 'minkowski', n_jobs = -1 ) )
+    svm = SklearnClassifier( SVC( kernel = 'rbf', gamma = 10.0, C = 0.1, random_state = args.seed, probability = True ) )
+    forest = SklearnClassifier( RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) )
+    xgboost = XGBoostClassifier( params_file_path = args.params_file, debug = args.debug )
+    dnn = KerasDNNClassifier( n_input_dim = len(X_train.columns) )
+    resnet = KerasResNetClassifier( n_channles = len(X_train.columns) )
 
-    xgboost = XGBClassifier(
-        booster = xgboost_params['booster'],
-        objective = xgboost_params['objective'],
-        learning_rate = xgboost_params['learning_rate'],
-        n_estimators = xgboost_params['n_estimators'],
-        max_depth = xgboost_params['max_depth'],
-        min_child_weight = xgboost_params['min_child_weight'],
-        subsample = xgboost_params['subsample'],
-        colsample_bytree = xgboost_params['colsample_bytree'],
-        gamma = xgboost_params['gamma'],
-        alpha = xgboost_params['alpha'],
-        reg_lambda = xgboost_params['reg_lambda'],
-        random_state = xgboost_params['random_state']
-    )
-
-    model = EnsembleStackingModelClassifier(
-        classifiers  = [ xgboost, kNN, svm, forest ],
+    # アンサンブルモデル
+    model = EnsembleStackingClassifier(
+        classifiers  = [ kNN, svm, forest, xgboost, resnet ],
         final_classifiers = logistic,
         n_splits = args.n_splits,
         seed = args.seed,
     )
-
+    
     #--------------------
     # モデルの学習処理
     #--------------------
@@ -155,7 +141,49 @@ if __name__ == '__main__':
     #--------------------
     # モデルの推論処理
     #--------------------
-    y_preds = model.predict(X_test)
+    if( args.output_type == "fixed" ):
+        y_preds = model.predict(X_test)
+    else:
+        y_preds = model.predict_proba(X_test)
+
+    #================================
+    # 可視化処理
+    #================================
+    # 分類対象の分布図
+    fig = plt.figure()
+    axis = fig.add_subplot(111)
+    sns.distplot(ds_train['Survived'], label='correct' )
+    sns.distplot(model.y_preds_train, label='predict' )
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "Survived.png"), dpi = 300, bbox_inches = 'tight' )
+
+    # loss
+    fig = plt.figure()
+    axis = fig.add_subplot(111)
+    for i, evals_result in enumerate(xgboost.evals_results):
+        axis.plot(evals_result['train'][xgboost.train_params["eval_metric"]], label='train / k={}'.format(i))
+        axis.plot(evals_result['valid'][xgboost.train_params["eval_metric"]], label='valid / k={}'.format(i))
+
+    plt.xlabel('iters')
+    plt.ylabel(xgboost.train_params["eval_metric"])
+    plt.xlim( [0,xgboost.train_params["num_boost_round"]+1] )
+    plt.grid()
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "losses_xgboost.png"), dpi = 300, bbox_inches = 'tight' )
+
+    # 重要特徴量
+    _, ax = plt.subplots(figsize=(8, 4))
+    xgb.plot_importance(
+        xgboost.model,
+        ax = ax,
+        importance_type = 'gain',
+        show_values = False
+    )
+    plt.tight_layout()
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "feature_importances.png"), dpi = 300, bbox_inches = 'tight' )
 
     #================================
     # Kaggle API での submit

@@ -4,13 +4,13 @@ import numpy as np
 
 # scikit-learn ライブラリ関連
 from sklearn.base import BaseEstimator              # 推定器 Estimator の上位クラス. get_params(), set_params() 関数が定義されている.
-from sklearn.base import ClassifierMixin            # 推定器 Estimator の上位クラス. score() 関数が定義されている.
+from sklearn.base import RegressorMixin            # 推定器 Estimator の上位クラス. score() 関数が定義されている.
 from sklearn.utils.estimator_checks import check_estimator
 
 from sklearn.pipeline import _name_estimators       # 
 from sklearn.base import clone                      #
 
-class RegressorXGBoost( BaseEstimator, ClassifierMixin ):
+class RegressorXGBoost( BaseEstimator, RegressorMixin ):
     def __init__( self, model, debug = False ):
         self.model = model
         self.debug = debug

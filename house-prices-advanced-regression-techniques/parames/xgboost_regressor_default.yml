@@ -17,8 +17,8 @@
             "random_state": 71,        
         },
         "train_params": {
-            "num_boost_round": 1000,            # 試行回数
-            "early_stopping_rounds": 100,       # early stopping を行う繰り返し回数
+            "num_boost_round": 5000,            # 試行回数
+            "early_stopping_rounds": 1000,      # early stopping を行う繰り返し回数
             'eval_metric': 'rmse',              # 平均2乗平方根誤差
         },
     },
