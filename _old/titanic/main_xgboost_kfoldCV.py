@@ -2,28 +2,13 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import yaml
 import random
 import warnings
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 from sklearn.model_selection import KFold
 from xgboost import XGBClassifier
-
-# XGBoost のデフォルトハイパーパラメーター
-params_xgboost = {
-    'booster': 'gbtree',
-    'objective': 'binary:logistic',
-    "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
-    "n_estimators" : 1050,
-    'max_depth': 5,                     # 3 ~ 9 : 一様分布に従う。1刻み
-    'min_child_weight': 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う
-    'subsample': 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'colsample_bytree': 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
-    'gamma': 0.0,                       # 1e-8 ~ 1.0 : 対数が一様分布に従う
-    'alpha': 0.0,                       # デフォルト値としておく。余裕があれば変更
-    'reg_lambda': 1.0,                  # デフォルト値としておく。余裕があれば変更
-    'random_state': 71,
-}
 
 
 if __name__ == '__main__':
@@ -32,11 +17,12 @@ if __name__ == '__main__':
     学習モデルは xgboost
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--in_dir", type=str, default="datasets/input")
-    parser.add_argument("--out_dir", type=str, default="datasets/output")
+    parser.add_argument("--exper_name", default="xgboost_kfoldCV", help="実験名")
+    parser.add_argument("--dataset_dir", type=str, default="datasets")
+    parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
-    parser.add_argument("--submit_message", type=str, default="From Kaggle API Python Script")
     parser.add_argument("--competition_id", type=str, default="titanic")
+    parser.add_argument("--params_file", type=str, default="parames/xgboost_classifier_default.yml")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
@@ -46,8 +32,10 @@ if __name__ == '__main__':
         for key, value in vars(args).items():
             print('%s: %s' % (str(key), str(value)))
 
-    if not os.path.isdir(args.out_dir):
-        os.mkdir(args.out_dir)
+    if not os.path.isdir(args.results_dir):
+        os.mkdir(args.results_dir)
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name))
 
     # 警告非表示
     warnings.simplefilter('ignore', DeprecationWarning)
@@ -59,9 +47,9 @@ if __name__ == '__main__':
     #================================
     # データセットの読み込み
     #================================
-    ds_train = pd.read_csv( os.path.join(args.in_dir, "train.csv" ) )
-    ds_test = pd.read_csv( os.path.join(args.in_dir, "test.csv" ) )
-    ds_gender_submission = pd.read_csv( os.path.join(args.in_dir, "gender_submission.csv" ) )
+    ds_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
+    ds_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
+    ds_gender_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
     if( args.debug ):
         print( "ds_train.head() : \n", ds_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
@@ -97,9 +85,8 @@ if __name__ == '__main__':
         print( "ds_test.head() : \n", ds_test.head() )
 
     #===========================================
-    # k-fold CV による処理
-    #===========================================
     # 学習用データセットとテスト用データセットの設定
+    #===========================================
     X_train = ds_train.drop('Survived', axis = 1)
     X_test = ds_test
     y_train = ds_train['Survived']
@@ -108,6 +95,17 @@ if __name__ == '__main__':
         print( "len(X_train) : ", len(X_train) )
         print( "len(y_train) : ", len(y_train) )
         print( "len(y_pred_val) : ", len(y_pred_val) )
+
+    #===========================================
+    # k-fold CV による学習 & 推論処理
+    #===========================================
+    # モデルのパラメータの読み込み
+    with open( args.params_file ) as f:
+        params = yaml.safe_load(f)
+        model_params = params["model"]["model_params"]
+        model_train_params = params["model"]["train_params"]
+        if( args.debug ):
+            print( "params :\n", params )
 
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
     kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
@@ -124,18 +122,18 @@ if __name__ == '__main__':
         # モデル定義
         #--------------------
         model = XGBClassifier(
-            booster = params_xgboost['booster'],
-            objective = params_xgboost['objective'],
-            learning_rate = params_xgboost['learning_rate'],
-            n_estimators = params_xgboost['n_estimators'],
-            max_depth = params_xgboost['max_depth'],
-            min_child_weight = params_xgboost['min_child_weight'],
-            subsample = params_xgboost['subsample'],
-            colsample_bytree = params_xgboost['colsample_bytree'],
-            gamma = params_xgboost['gamma'],
-            alpha = params_xgboost['alpha'],
-            reg_lambda = params_xgboost['reg_lambda'],
-            random_state = params_xgboost['random_state']
+            booster = model_params['booster'],
+            objective = model_params['objective'],
+            learning_rate = model_params['learning_rate'],
+            n_estimators = model_params['n_estimators'],
+            max_depth = model_params['max_depth'],
+            min_child_weight = model_params['min_child_weight'],
+            subsample = model_params['subsample'],
+            colsample_bytree = model_params['colsample_bytree'],
+            gamma = model_params['gamma'],
+            alpha = model_params['alpha'],
+            reg_lambda = model_params['reg_lambda'],
+            random_state = model_params['random_state']
         )
 
         #--------------------
@@ -163,11 +161,11 @@ if __name__ == '__main__':
     y_sub = sum(y_preds) / len(y_preds)
     sub = ds_gender_submission
     sub['Survived'] = list(map(int, y_sub))
-    sub.to_csv( os.path.join(args.out_dir, args.submit_file), index=False)
+    sub.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
 
     if( args.submit ):
         # Kaggle-API で submit
         api = KaggleApi()
         api.authenticate()
-        api.competition_submit( os.path.join(args.out_dir, args.submit_file), args.submit_message, args.competition_id)
+        api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.exper_name, args.competition_id)
         os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )

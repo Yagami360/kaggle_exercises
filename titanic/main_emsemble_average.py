@@ -29,7 +29,7 @@ if __name__ == '__main__':
     学習モデルは xgboost
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="emsemble_stratified_kfoldCV", help="実験名")
+    parser.add_argument("--exper_name", default="emsemble_average_stratified_kfoldCV", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
