@@ -12,9 +12,14 @@
 git_pull_reset.sh
 
 titanic/datasets/*
+titanic/results/*
+
 house-prices-advanced-regression-techniques/datasets/*
+house-prices-advanced-regression-techniques/results/*
+
 dogs-vs-cats-redux-kernels-edition/datasets/*
 dogs-vs-cats-redux-kernels-edition/pytorch_version/results/*
+dogs-vs-cats-redux-kernels-edition/keras_version/results/*
 dogs-vs-cats-redux-kernels-edition/keras_version/_debug/*
 dogs-vs-cats-redux-kernels-edition/keras_version/checkpoints/*
 dogs-vs-cats-redux-kernels-edition/keras_version/tensorboard/*

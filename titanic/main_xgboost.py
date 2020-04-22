@@ -5,11 +5,17 @@ import pandas as pd
 import yaml
 import random
 import warnings
+from matplotlib import pyplot as plt
+import seaborn as sns
 from kaggle.api.kaggle_api_extended import KaggleApi
 
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold
-from xgboost import XGBClassifier
+import xgboost as xgb
 
+# 自作モジュール
+from preprocessing import preprocessing
 
 if __name__ == '__main__':
     """
@@ -47,52 +53,37 @@ if __name__ == '__main__':
     #================================
     # データセットの読み込み
     #================================
-    ds_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
-    ds_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
-    ds_gender_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
+    df_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
+    df_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
+    df_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
     if( args.debug ):
-        print( "ds_train.head() : \n", ds_train.head() )
-        print( "ds_test.head() : \n", ds_test.head() )
-        print( "ds_gender_submission.head() : \n", ds_gender_submission.head() )
+        print( "df_train.head() : \n", df_train.head() )
+        print( "df_test.head() : \n", df_test.head() )
+        print( "df_submission.head() : \n", df_submission.head() )
     
     #================================
     # 前処理
     #================================
-    # 無用なデータを除外
-    ds_train.drop(['Name', 'PassengerId', 'SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
-    ds_test.drop(['Name', 'PassengerId', 'SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
-
-    # データを数量化
-    ds_train['Sex'].replace(['male','female'], [0, 1], inplace=True)
-    ds_test['Sex'].replace(['male','female'], [0, 1], inplace=True)
-
-    ds_train['Embarked'].fillna(('S'), inplace=True)
-    ds_train['Embarked'] = ds_train['Embarked'].map( {'S': 0, 'C': 1, 'Q': 2} ).astype(int)
-    ds_test['Embarked'].fillna(('S'), inplace=True)
-    ds_test['Embarked'] = ds_test['Embarked'].map( {'S': 0, 'C': 1, 'Q': 2} ).astype(int)
-
-    # NAN 値を補完
-    ds_train['Fare'].fillna(np.mean(ds_train['Fare']), inplace=True)
-    ds_test['Fare'].fillna(np.mean(ds_test['Fare']), inplace=True)
-
-    ds_train['Age'].fillna(np.mean(ds_train['Age']), inplace=True)
-    ds_test['Age'].fillna(np.mean(ds_test['Age']), inplace=True)
-
+    df_train, df_test = preprocessing( df_train, df_test, debug = args.debug )
     if( args.debug ):
-        print( "ds_train.head() : \n", ds_train.head() )
-        print( "ds_test.head() : \n", ds_test.head() )
+        print( "df_train.head() : \n", df_train.head() )
+        print( "df_test.head() : \n", df_test.head() )
+
+    # 前処理後のデータセットを外部ファイルに保存
+    df_train.to_csv( os.path.join(args.results_dir, args.exper_name, "train_preprocessed.csv"), index=True)
+    df_test.to_csv( os.path.join(args.results_dir, args.exper_name, "test_preprocessed.csv"), index=True)
 
     #===========================================
     # 学習用データセットとテスト用データセットの設定
     #===========================================
-    X_train = ds_train.drop('Survived', axis = 1)
-    X_test = ds_test
-    y_train = ds_train['Survived']
-    y_pred_val = np.zeros((len(y_train),))
+    X_train = df_train.drop('Survived', axis = 1)
+    X_test = df_test
+    y_train = df_train['Survived']
+    y_pred_train = np.zeros((len(y_train),))
     if( args.debug ):
         print( "len(X_train) : ", len(X_train) )
         print( "len(y_train) : ", len(y_train) )
-        print( "len(y_pred_val) : ", len(y_pred_val) )
+        print( "len(y_pred_train) : ", len(y_pred_train) )
 
     #===========================================
     # k-fold CV による処理
@@ -108,7 +99,7 @@ if __name__ == '__main__':
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
     kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
-    y_preds = []
+    y_preds_test = []
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
         #--------------------
         # データセットの分割
@@ -119,7 +110,7 @@ if __name__ == '__main__':
         #--------------------
         # モデル定義
         #--------------------
-        model = XGBClassifier(
+        model = xgb.XGBClassifier(
             booster = model_params['booster'],
             objective = model_params['objective'],
             learning_rate = model_params['learning_rate'],
@@ -143,24 +134,42 @@ if __name__ == '__main__':
         # モデルの推論処理
         #--------------------
         y_pred_test = model.predict(X_test)
-        y_preds.append(y_pred_test)
+        y_preds_test.append(y_pred_test)
         #print( "[{}] len(y_pred_test) : {}".format(fold_id, len(y_pred_test)) )
 
-        y_pred_val[valid_index] = model.predict(X_valid_fold)
-        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_val)) )
+        y_pred_train[valid_index] = model.predict(X_valid_fold)
+        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_train)) )
     
-    accuracy = (y_train == y_pred_val).sum()/len(y_pred_val)
-    print( "accuracy [val] : {:0.5f}".format(accuracy) )
+    # k-fold CV で平均化
+    y_preds_test = sum(y_preds_test) / len(y_preds_test)
+
+    # accuracy
+    accuracy = (y_train == y_pred_train).sum()/len(y_pred_train)
+    print( "accuracy [k-fold CV train-valid] : {:0.5f}".format(accuracy) )
+
+    #================================
+    # 可視化処理
+    #================================
+    #------------------
+    # 重要特徴量
+    #------------------
+    _, ax = plt.subplots(figsize=(8, 4))
+    xgb.plot_importance(
+        model,
+        ax = ax,
+        importance_type = 'gain',
+        show_values = False
+    )
+    plt.tight_layout()
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "feature_importances.png"), dpi = 300, bbox_inches = 'tight' )
 
     #================================
     # Kaggle API での submit
     #================================
     # 提出用データに値を設定
-    y_sub = sum(y_preds) / len(y_preds)
-    sub = ds_gender_submission
-    sub['Survived'] = list(map(int, y_sub))
-    sub.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
-
+    y_sub = list(map(int, y_preds_test))
+    df_submission['Survived'] = y_sub
+    df_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
     if( args.submit ):
         # Kaggle-API で submit
         api = KaggleApi()

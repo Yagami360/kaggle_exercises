@@ -253,9 +253,6 @@ class StackingEnsembleClassifier( BaseEstimator, ClassifierMixin ):
             kf = StratifiedKFold( n_splits=self.n_splits, shuffle=True, random_state=self.seed )
             y_preds_train = np.zeros( (self.n_second_classifier, len(y_train)) )
             y_preds_test = np.zeros( (self.n_second_classifier, self.n_splits, len(X_test)) )
-
-            print( "[second_classifiers] X_train.shape : ", X_train.shape )
-            print( "[second_classifiers] y_train.shape : ", y_train.shape )
             
             k = 0
             for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
@@ -334,16 +331,19 @@ class StackingEnsembleClassifier( BaseEstimator, ClassifierMixin ):
 
         # 正解率の計算
         self.accuracy = (y_train == y_preds_train).sum()/len(y_preds_train)
-        print( "[EnsembleStackingClassifier] accuracy [k-fold CV train vs valid] : {:0.5f}".format(self.accuracy) )
+        #print( "[EnsembleStackingClassifier] accuracy [k-fold CV train vs valid] : {:0.5f}".format(self.accuracy) )
 
         # テストデータに対する予測値の平均をとる
         self.y_preds_test = np.mean( y_preds_test, axis=0 )
         self.y_preds_train = y_preds_train
         return self
 
+    """
     def predict( self, X_test ):
         return self.y_preds_test
+    """
 
-
+    """
     def predict_proba( self, X_test ):
         return self.y_preds_test
+    """

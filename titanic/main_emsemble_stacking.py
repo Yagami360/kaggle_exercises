@@ -23,7 +23,8 @@ from sklearn.ensemble import RandomForestClassifier     #
 from sklearn.linear_model import LogisticRegression
 import xgboost as xgb
 
-# 自作クラス
+# 自作モジュール
+from preprocessing import preprocessing
 from models import SklearnClassifier, XGBoostClassifier, KerasDNNClassifier, KerasResNetClassifier
 from models import StackingEnsembleClassifier
 
@@ -41,7 +42,6 @@ if __name__ == '__main__':
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument("--params_file", type=str, default="parames/xgboost_classifier_titanic.yml")
     parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
-    parser.add_argument('--output_type', choices=['fixed', 'proba'], default="fixed", help="出力形式（確定値 or 確率値）")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -65,47 +65,28 @@ if __name__ == '__main__':
     #================================
     # データセットの読み込み
     #================================
-    ds_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
-    ds_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
-    ds_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
+    df_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
+    df_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
+    df_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
     if( args.debug ):
-        print( "ds_train.head() : \n", ds_train.head() )
-        print( "ds_test.head() : \n", ds_test.head() )
-        print( "ds_submission.head() : \n", ds_submission.head() )
+        print( "df_train.head() : \n", df_train.head() )
+        print( "df_test.head() : \n", df_test.head() )
+        print( "df_submission.head() : \n", df_submission.head() )
     
     #================================
     # 前処理
     #================================
-    # 無用なデータを除外
-    ds_train.drop(['Name', 'PassengerId', 'SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
-    ds_test.drop(['Name', 'PassengerId', 'SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
-
-    # データを数量化
-    ds_train['Sex'].replace(['male','female'], [0, 1], inplace=True)
-    ds_test['Sex'].replace(['male','female'], [0, 1], inplace=True)
-
-    ds_train['Embarked'].fillna(('S'), inplace=True)
-    ds_train['Embarked'] = ds_train['Embarked'].map( {'S': 0, 'C': 1, 'Q': 2} ).astype(int)
-    ds_test['Embarked'].fillna(('S'), inplace=True)
-    ds_test['Embarked'] = ds_test['Embarked'].map( {'S': 0, 'C': 1, 'Q': 2} ).astype(int)
-
-    # NAN 値を補完
-    ds_train['Fare'].fillna(np.mean(ds_train['Fare']), inplace=True)
-    ds_test['Fare'].fillna(np.mean(ds_test['Fare']), inplace=True)
-
-    ds_train['Age'].fillna(np.mean(ds_train['Age']), inplace=True)
-    ds_test['Age'].fillna(np.mean(ds_test['Age']), inplace=True)
-
+    df_train, df_test = preprocessing( df_train, df_test, debug = args.debug )
     if( args.debug ):
-        print( "ds_train.head() : \n", ds_train.head() )
-        print( "ds_test.head() : \n", ds_test.head() )
+        print( "df_train.head() : \n", df_train.head() )
+        print( "df_test.head() : \n", df_test.head() )
 
     #===========================================
     # 学習用データセットとテスト用データセットの設定
     #===========================================
-    X_train = ds_train.drop('Survived', axis = 1)
-    X_test = ds_test
-    y_train = ds_train['Survived']
+    X_train = df_train.drop('Survived', axis = 1)
+    X_test = df_test
+    y_train = df_train['Survived']
     if( args.debug ):
         print( "len(X_train) : ", len(X_train) )
         print( "len(y_train) : ", len(y_train) )
@@ -155,10 +136,9 @@ if __name__ == '__main__':
     #--------------------
     # モデルの推論処理
     #--------------------
-    if( args.output_type == "fixed" ):
-        y_preds = model.predict(X_test)
-    else:
-        y_preds = model.predict_proba(X_test)
+    y_preds_train = model.y_preds_train
+    y_preds_test = model.y_preds_test
+    #accuracy = (y_train == y_preds_train).sum()/len(y_preds_train)
 
     #================================
     # 可視化処理
@@ -168,7 +148,7 @@ if __name__ == '__main__':
     #------------------
     fig = plt.figure()
     axis = fig.add_subplot(111)
-    sns.distplot(ds_train['Survived'], label='correct' )
+    sns.distplot(df_train['Survived'], label='correct' )
     sns.distplot(model.y_preds_train, label='predict' )
     plt.legend()
     plt.grid()
@@ -230,10 +210,9 @@ if __name__ == '__main__':
     # Kaggle API での submit
     #================================
     # 提出用データに値を設定
-    y_sub = list(map(int, y_preds))
-    ds_submission['Survived'] = y_sub
-    ds_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
-
+    y_sub = list(map(int, y_preds_test))
+    df_submission['Survived'] = y_sub
+    df_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
     if( args.submit ):
         # Kaggle-API で submit
         api = KaggleApi()

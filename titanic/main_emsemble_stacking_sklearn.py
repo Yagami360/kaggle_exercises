@@ -24,7 +24,8 @@ from sklearn.linear_model import LogisticRegression
 import xgboost as xgb
 from sklearn.ensemble import StackingClassifier
 
-# 自作クラス
+# 自作モジュール
+from preprocessing import preprocessing
 from models import SklearnClassifier, XGBoostClassifier, KerasDNNClassifier, KerasResNetClassifier
 
 
@@ -65,47 +66,28 @@ if __name__ == '__main__':
     #================================
     # データセットの読み込み
     #================================
-    ds_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
-    ds_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
-    ds_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
+    df_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
+    df_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
+    df_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
     if( args.debug ):
-        print( "ds_train.head() : \n", ds_train.head() )
-        print( "ds_test.head() : \n", ds_test.head() )
-        print( "ds_submission.head() : \n", ds_submission.head() )
+        print( "df_train.head() : \n", df_train.head() )
+        print( "df_test.head() : \n", df_test.head() )
+        print( "df_submission.head() : \n", df_submission.head() )
     
     #================================
     # 前処理
     #================================
-    # 無用なデータを除外
-    ds_train.drop(['Name', 'PassengerId', 'SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
-    ds_test.drop(['Name', 'PassengerId', 'SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
-
-    # データを数量化
-    ds_train['Sex'].replace(['male','female'], [0, 1], inplace=True)
-    ds_test['Sex'].replace(['male','female'], [0, 1], inplace=True)
-
-    ds_train['Embarked'].fillna(('S'), inplace=True)
-    ds_train['Embarked'] = ds_train['Embarked'].map( {'S': 0, 'C': 1, 'Q': 2} ).astype(int)
-    ds_test['Embarked'].fillna(('S'), inplace=True)
-    ds_test['Embarked'] = ds_test['Embarked'].map( {'S': 0, 'C': 1, 'Q': 2} ).astype(int)
-
-    # NAN 値を補完
-    ds_train['Fare'].fillna(np.mean(ds_train['Fare']), inplace=True)
-    ds_test['Fare'].fillna(np.mean(ds_test['Fare']), inplace=True)
-
-    ds_train['Age'].fillna(np.mean(ds_train['Age']), inplace=True)
-    ds_test['Age'].fillna(np.mean(ds_test['Age']), inplace=True)
-
+    df_train, df_test = preprocessing( df_train, df_test, debug = args.debug )
     if( args.debug ):
-        print( "ds_train.head() : \n", ds_train.head() )
-        print( "ds_test.head() : \n", ds_test.head() )
+        print( "df_train.head() : \n", df_train.head() )
+        print( "df_test.head() : \n", df_test.head() )
 
     #===========================================
     # 学習用データセットとテスト用データセットの設定
     #===========================================
-    X_train = ds_train.drop('Survived', axis = 1)
-    X_test = ds_test
-    y_train = ds_train['Survived']
+    X_train = df_train.drop('Survived', axis = 1)
+    X_test = df_test
+    y_train = df_train['Survived']
     if( args.debug ):
         print( "len(X_train) : ", len(X_train) )
         print( "len(y_train) : ", len(y_train) )
@@ -213,7 +195,7 @@ if __name__ == '__main__':
     print( "y_preds_test.shape: ", y_preds_test.shape )
 
     accuracy = (y_train == y_preds_train).sum()/len(y_preds_train)
-    print( "accuracy [k-fold CV train vs valid] : {:0.5f}".format(accuracy) )
+    print( "accuracy [k-fold CV train-valid] : {:0.5f}".format(accuracy) )
 
     #================================
     # 可視化処理
@@ -221,7 +203,7 @@ if __name__ == '__main__':
     # 分類対象の分布図
     fig = plt.figure()
     axis = fig.add_subplot(111)
-    sns.distplot(ds_train['Survived'], label='correct' )
+    sns.distplot(df_train['Survived'], label='correct' )
     sns.distplot(y_preds_train, label='predict' )
     plt.legend()
     plt.grid()
@@ -260,9 +242,8 @@ if __name__ == '__main__':
     #================================
     # 提出用データに値を設定
     y_sub = list(map(int, y_preds_test))
-    ds_submission['Survived'] = y_sub
-    ds_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
-
+    df_submission['Survived'] = y_sub
+    df_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
     if( args.submit ):
         # Kaggle-API で submit
         api = KaggleApi()
