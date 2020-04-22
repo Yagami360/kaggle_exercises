@@ -13,7 +13,7 @@ from sklearn.base import clone
 from sklearn.model_selection import StratifiedKFold
 
 
-class EnsembleBlendingClassifier( BaseEstimator, ClassifierMixin ):
+class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
     """
     アンサンブルモデルの識別器 classifier の自作クラス.
     scikit-learn ライブラリの推定器 estimator の基本クラス BaseEstimator, ClassifierMixin を継承している.
@@ -157,12 +157,20 @@ class EnsembleBlendingClassifier( BaseEstimator, ClassifierMixin ):
         return ave_probas
 
 
-class EnsembleStackingClassifier( BaseEstimator, ClassifierMixin ):
-    def __init__( self, classifiers, final_classifiers, n_splits = 4, clone = False, seed = 72 ):
+class StackingEnsembleClassifier( BaseEstimator, ClassifierMixin ):
+    def __init__( self, classifiers, final_classifiers, second_classifiers = None, n_splits = 4, clone = False, seed = 72 ):
         self.classifiers = classifiers
-        self.final_classifiers = final_classifiers
         self.fitted_classifiers = classifiers
+        self.final_classifiers = final_classifiers
+        self.second_classifiers = second_classifiers
+        self.fitted_second_classifiers = second_classifiers
+
         self.n_classifier = len( classifiers )
+        if( second_classifiers != None ):
+            self.n_second_classifier = len( second_classifiers )
+        else:
+            self.n_second_classifier = 0
+
         self.n_splits = n_splits
         self.clone = clone
         self.seed = seed
@@ -241,6 +249,64 @@ class EnsembleStackingClassifier( BaseEstimator, ClassifierMixin ):
         #--------------------------------
         # ２段目の k-fold CV での学習 & 推論
         #--------------------------------
+        if( self.second_classifiers != None ):
+            kf = StratifiedKFold( n_splits=self.n_splits, shuffle=True, random_state=self.seed )
+            y_preds_train = np.zeros( (self.n_second_classifier, len(y_train)) )
+            y_preds_test = np.zeros( (self.n_second_classifier, self.n_splits, len(X_test)) )
+
+            print( "[second_classifiers] X_train.shape : ", X_train.shape )
+            print( "[second_classifiers] y_train.shape : ", y_train.shape )
+            
+            k = 0
+            for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
+                #--------------------
+                # データセットの分割
+                #--------------------
+                X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+                y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
+
+                #-------------------
+                # 各モデルの学習処理
+                #-------------------
+                self.fitted_second_classifiers = []
+                for i, clf in enumerate( tqdm(self.second_classifiers, desc="fitting second classifiers") ):
+                    if( self.clone ):
+                        fitted_clf = clone(clf).fit( X_train_fold, y_train_fold, X_valid_fold, y_valid_fold )
+                    else:
+                        fitted_clf = clf.fit( X_train_fold, y_train_fold, X_valid_fold, y_valid_fold )
+
+                    self.fitted_second_classifiers.append( fitted_clf )
+
+                #-------------------
+                # 各モデルの推論処理
+                #-------------------
+                for i, clf in enumerate(self.fitted_second_classifiers):
+                    y_preds_train[i][valid_index] = clf.predict(X_valid_fold)
+                    y_preds_test[i][k] = clf.predict(X_test)
+
+                k += 1
+
+            # テストデータに対する予測値の k-fold CV の平均をとる
+            y_preds_test = np.mean( y_preds_test, axis=1 )
+            #print( "y_preds_test.shape : ", y_preds_test.shape )
+
+            # 各モデルの予想値をスタッキング
+            y_preds_train_stack = y_preds_train[0]
+            y_preds_test_stack = y_preds_test[0]
+            for i in range(self.n_second_classifier - 1):
+                y_preds_train_stack = np.column_stack( (y_preds_train_stack, y_preds_train[i+1]) )
+                y_preds_test_stack = np.column_stack( (y_preds_test_stack, y_preds_test[i+1]) )
+
+            y_preds_train = y_preds_train_stack
+            y_preds_test = y_preds_test_stack
+
+            # 予測値を新たな特徴量としてデータフレーム作成
+            X_train = pd.DataFrame(y_preds_train)
+            X_test = pd.DataFrame(y_preds_test)
+
+        #--------------------------------
+        # 最終層の k-fold CV での学習 & 推論
+        #--------------------------------
         y_preds_train = np.zeros( (len(y_train)) )
         y_preds_test = np.zeros( (self.n_splits, len(X_test)) )
         k = 0
@@ -272,57 +338,12 @@ class EnsembleStackingClassifier( BaseEstimator, ClassifierMixin ):
 
         # テストデータに対する予測値の平均をとる
         self.y_preds_test = np.mean( y_preds_test, axis=0 )
-        #print( "y_preds_test.shape : ", y_preds_test.shape )        
         self.y_preds_train = y_preds_train
         return self
 
     def predict( self, X_test ):
-        """
-        #------------------------
-        # １段目の各モデルの推論処理
-        #------------------------
-        y_preds_test = np.zeros( (self.n_classifier, len(X_test)) )
-        for i, clf in enumerate(self.fitted_classifiers):
-            y_preds_test[i] = clf.predict(X_test)
-
-        # 各モデルの予想値をスタッキング
-        y_preds_test_stack = y_preds_test[0]
-        for i in range(self.n_classifier - 1):
-            y_preds_test_stack = np.column_stack( (y_preds_test_stack, y_preds_test[i+1]) )
-
-        y_preds_test = y_preds_test_stack
-
-        # 予測値を新たな特徴量としてデータフレーム作成
-        X_test = pd.DataFrame(y_preds_test)
-
-        #------------------------
-        # ２段目の各モデルの推論処理
-        #------------------------
-        y_preds_test = self.final_classifiers.predict(X_test)
-        """
         return self.y_preds_test
 
 
     def predict_proba( self, X_test ):
-        #------------------------
-        # １段目の各モデルの推論処理
-        #------------------------
-        y_preds_test = np.zeros( (self.n_classifier, len(X_test)) )
-        for i, clf in enumerate(self.fitted_classifiers):
-            y_preds_test[i] = clf.predict_proba(X_test)
-
-        # 各モデルの予想値をスタッキング
-        y_preds_test_stack = y_preds_test[0]
-        for i in range(self.n_classifier - 1):
-            y_preds_test_stack = np.column_stack( (y_preds_test_stack, y_preds_test[i+1]) )
-
-        y_preds_test = y_preds_test_stack
-
-        # 予測値を新たな特徴量としてデータフレーム作成
-        X_test = pd.DataFrame(y_preds_test)
-
-        #------------------------
-        # ２段目の各モデルの推論処理
-        #------------------------
-        y_preds_test = self.final_classifiers.predict_proba(X_test)
-        return y_preds_test
+        return self.y_preds_test

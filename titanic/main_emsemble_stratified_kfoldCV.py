@@ -20,7 +20,7 @@ from sklearn.ensemble import AdaBoostClassifier         # AdaBoost
 from sklearn.ensemble import RandomForestClassifier     # 
 from xgboost import XGBClassifier
 
-from models import EnsembleBlendingClassifier
+from models import WeightAverageEnsembleClassifier
 
 
 if __name__ == '__main__':
@@ -198,13 +198,13 @@ if __name__ == '__main__':
             )
 
         """
-        model = EnsembleModelClassifier(
+        model = WeightAverageEnsembleClassifier(
             classifiers  = [ xgboost, kNN, svm, forest, bagging, ada ],
             weights = [0.75, 0.25, 0.0, 0.25, 0.25, 0.25 ],
             vote_method = "majority_vote",
         )
         """
-        model = EnsembleBlendingClassifier(
+        model = WeightAverageEnsembleClassifier(
             classifiers  = [ xgboost, kNN, svm, forest ],
             weights = [0.75, 0.05, 0.05, 0.25, ],
             vote_method = "majority_vote",

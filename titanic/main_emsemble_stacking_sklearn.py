@@ -22,10 +22,10 @@ from sklearn.ensemble import AdaBoostClassifier         # AdaBoost
 from sklearn.ensemble import RandomForestClassifier     # 
 from sklearn.linear_model import LogisticRegression
 import xgboost as xgb
+from sklearn.ensemble import StackingClassifier
 
 # 自作クラス
 from models import SklearnClassifier, XGBoostClassifier, KerasDNNClassifier, KerasResNetClassifier
-from models import StackingEnsembleClassifier
 
 
 if __name__ == '__main__':
@@ -34,7 +34,7 @@ if __name__ == '__main__':
     学習モデルは xgboost
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="emsemble_stacking", help="実験名")
+    parser.add_argument("--exper_name", default="emsemble_stacking_sklearn", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
@@ -114,123 +114,152 @@ if __name__ == '__main__':
     #===========================================
     # モデルの学習 & 推論処理
     #===========================================
+    # モデルのパラメータの読み込み
+    with open( args.params_file ) as f:
+        params = yaml.safe_load(f)
+        model_params = params["model"]["model_params"]
+        model_train_params = params["model"]["train_params"]
+        if( args.debug ):
+            print( "params :\n", params )
+
+    xgboost1 = xgb.XGBClassifier(
+        booster = model_params['booster'],
+        objective = model_params['objective'],
+        learning_rate = model_params['learning_rate'],
+        n_estimators = model_params['n_estimators'],
+        max_depth = model_params['max_depth'],
+        min_child_weight = model_params['min_child_weight'],
+        subsample = model_params['subsample'],
+        colsample_bytree = model_params['colsample_bytree'],
+        gamma = model_params['gamma'],
+        alpha = model_params['alpha'],
+        reg_lambda = model_params['reg_lambda'],
+        random_state = model_params['random_state']
+    )
+
+    xgboost2 = xgb.XGBClassifier(
+        booster = model_params['booster'],
+        objective = model_params['objective'],
+        learning_rate = model_params['learning_rate'],
+        n_estimators = model_params['n_estimators'],
+        max_depth = model_params['max_depth'],
+        min_child_weight = model_params['min_child_weight'],
+        subsample = model_params['subsample'],
+        colsample_bytree = model_params['colsample_bytree'],
+        gamma = model_params['gamma'],
+        alpha = model_params['alpha'],
+        reg_lambda = model_params['reg_lambda'],
+        random_state = model_params['random_state']
+    )
+
     #--------------------
     # モデル定義
     #--------------------
-    logistic1 = SklearnClassifier( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
-    logistic2 = SklearnClassifier( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
-    logistic3 = SklearnClassifier( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
-    knn1 = SklearnClassifier( KNeighborsClassifier( n_neighbors = 5, p = 2, metric = 'minkowski', n_jobs = -1 ) )
-    svc1 = SklearnClassifier( SVC( kernel = 'rbf', gamma = 10.0, C = 0.1, random_state = args.seed, probability = True ) )
-    forest1 = SklearnClassifier( RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) )
-    xgboost1 = XGBoostClassifier( params_file_path = args.params_file, use_valid = True, debug = args.debug )
-    xgboost2 = XGBoostClassifier( params_file_path = args.params_file, use_valid = True, debug = args.debug )
-    dnn1 = KerasDNNClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
-    dnn2 = KerasDNNClassifier( n_input_dim = 6, use_valid = True, debug = args.debug )
-
     # アンサンブルモデル（２段）
     """
-    model = StackingEnsembleClassifier(
-        classifiers  = [ knn1, logistic1, svc1, forest1, xgboost1, dnn1 ],
-        final_classifiers = logistic2,
-        n_splits = args.n_splits,
-        seed = args.seed,
+    model = StackingClassifier(
+        estimators = {
+            ("logistic", LogisticRegression( penalty='l2', solver="sag", random_state=args.seed )),
+            ('knn', KNeighborsClassifier( n_neighbors = 5, p = 2, metric = 'minkowski', n_jobs = -1 )),
+            ('svm', SVC( kernel = 'rbf', gamma = 10.0, C = 0.1, random_state = args.seed, probability = True ) ),
+            ('forest', RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) ),
+            ('xgboost', xgboost1),
+        }, 
+        final_estimator = LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ),
     )
     """
-
+    
     # アンサンブルモデル（３段）
-    model = StackingEnsembleClassifier(
-        classifiers  = [ knn1, logistic1, svc1, forest1, xgboost1, dnn1 ],
-        second_classifiers  = [ logistic2, xgboost2, dnn2 ],
-        final_classifiers = logistic3,
-        n_splits = args.n_splits,
-        seed = args.seed,
+    model = StackingClassifier(
+        estimators = {
+            ("logistic", LogisticRegression( penalty='l2', solver="sag", random_state=args.seed )),
+            ('knn', KNeighborsClassifier( n_neighbors = 5, p = 2, metric = 'minkowski', n_jobs = -1 )),
+            ('svm', SVC( kernel = 'rbf', gamma = 10.0, C = 0.1, random_state = args.seed, probability = True ) ),
+            ('forest', RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) ),
+            ('xgboost', xgboost1),
+        }, 
+        final_estimator = StackingClassifier(
+            estimators = {
+                ("logistic", LogisticRegression( penalty='l2', solver="sag", random_state=args.seed )),
+                ('forest', RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) ),
+                ('xgboost', xgboost2),
+            },
+            final_estimator = LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ),
+            cv = args.n_splits,
+            verbose = 1,
+            n_jobs = -1,
+        ),
+        cv = args.n_splits,
+        verbose = 1,
+        n_jobs = -1,
     )
 
     #--------------------
     # モデルの学習処理
     #--------------------
-    model.fit(X_train, y_train, X_test)
+    model.fit(X_train, y_train)
 
     #--------------------
     # モデルの推論処理
     #--------------------
     if( args.output_type == "fixed" ):
-        y_preds = model.predict(X_test)
+        y_preds_train = model.predict(X_train)
+        y_preds_test = model.predict(X_test)
     else:
-        y_preds = model.predict_proba(X_test)
+        y_preds_train = model.predict_proba(X_train)
+        y_preds_test = model.predict_proba(X_test)
+
+    print( "y_preds_train.shape: ", y_preds_train.shape )
+    print( "y_preds_test.shape: ", y_preds_test.shape )
+
+    accuracy = (y_train == y_preds_train).sum()/len(y_preds_train)
+    print( "accuracy [k-fold CV train vs valid] : {:0.5f}".format(accuracy) )
 
     #================================
     # 可視化処理
     #================================
-    #------------------
     # 分類対象の分布図
-    #------------------
     fig = plt.figure()
     axis = fig.add_subplot(111)
     sns.distplot(ds_train['Survived'], label='correct' )
-    sns.distplot(model.y_preds_train, label='predict' )
+    sns.distplot(y_preds_train, label='predict' )
     plt.legend()
     plt.grid()
     plt.tight_layout()
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "Survived.png"), dpi = 300, bbox_inches = 'tight' )
 
-    #------------------
-    # 損失関数値
-    #------------------
     """
-    # DNN    
+    # loss
     fig = plt.figure()
     axis = fig.add_subplot(111)
-    for i, evals_result in enumerate(dnn1.evals_results):
-        print( evals_result.keys() )
-        print( evals_result['accuracy'][0:10] )
+    for i, evals_result in enumerate(xgboost.evals_results):
+        axis.plot(evals_result['train'][xgboost.train_params["eval_metric"]], label='train / k={}'.format(i))
+        axis.plot(evals_result['valid'][xgboost.train_params["eval_metric"]], label='valid / k={}'.format(i))
 
-        #axis.plot(evals_result['train'][xgboost1.train_params["eval_metric"]], label='train / k={}'.format(i))
-        #axis.plot(evals_result['valid'][xgboost1.train_params["eval_metric"]], label='valid / k={}'.format(i))
-
-    plt.xlabel('epoches')
-    plt.set_title( "DNN" )
-    plt.grid()
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig( os.path.join(args.results_dir, args.exper_name, "losses_dnn.png"), dpi = 300, bbox_inches = 'tight' )
-    """
-
-    # XGBoost
-    fig = plt.figure()
-    axis = fig.add_subplot(111)
-    for i, evals_result in enumerate(xgboost1.evals_results):
-        axis.plot(evals_result['train'][xgboost1.train_params["eval_metric"]], label='train / k={}'.format(i))
-        axis.plot(evals_result['valid'][xgboost1.train_params["eval_metric"]], label='valid / k={}'.format(i))
-
-    axis.set_title( "xgboost" )
     plt.xlabel('iters')
-    plt.ylabel(xgboost1.train_params["eval_metric"])
-    plt.xlim( [0,xgboost1.train_params["num_boost_round"]+1] )
+    plt.ylabel(xgboost.train_params["eval_metric"])
+    plt.xlim( [0,xgboost.train_params["num_boost_round"]+1] )
     plt.grid()
     plt.legend()
     plt.tight_layout()
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "losses_xgboost.png"), dpi = 300, bbox_inches = 'tight' )
 
-    #------------------
     # 重要特徴量
-    #------------------
     _, ax = plt.subplots(figsize=(8, 4))
     xgb.plot_importance(
-        xgboost1.model,
+        xgboost.model,
         ax = ax,
         importance_type = 'gain',
         show_values = False
     )
     plt.tight_layout()
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "feature_importances.png"), dpi = 300, bbox_inches = 'tight' )
-
+    """
     #================================
     # Kaggle API での submit
     #================================
     # 提出用データに値を設定
-    y_sub = list(map(int, y_preds))
+    y_sub = list(map(int, y_preds_test))
     ds_submission['Survived'] = y_sub
     ds_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
 

@@ -22,8 +22,9 @@ from keras.utils import to_categorical
 
 
 class SklearnClassifier( BaseEstimator, ClassifierMixin ):
-    def __init__( self, model, debug = False ):
+    def __init__( self, model, use_valid = False, debug = False ):
         self.model = model
+        self.use_valid = use_valid
         self.debug = debug
         return
 
@@ -32,7 +33,7 @@ class SklearnClassifier( BaseEstimator, ClassifierMixin ):
             self.params = yaml.safe_load(f)
         return
 
-    def fit( self, X_train, y_train, X_valid, y_valid ):
+    def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
         self.model.fit(X_train, y_train)
         return self
 
@@ -48,9 +49,10 @@ class SklearnClassifier( BaseEstimator, ClassifierMixin ):
 
 
 class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
-    def __init__( self, params_file_path = "parames/xgboost_classifier_default.yml", debug = False ):
+    def __init__( self, params_file_path = "parames/xgboost_classifier_default.yml", use_valid = False, debug = False ):
         self.model = None
         self.debug = debug
+        self.use_valid = use_valid
         self.evals_results = []
         self.load_params( params_file_path )
         return
@@ -65,24 +67,46 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
             self.train_params = self.params["model"]["train_params"]
         return
 
+    """
+    def get_params(self, deep=True):
+        return self.params
+    """
+
+    """
+    def set_params(self, **parameters):
+        for parameter, value in parameters.items():
+            setattr(self,parameter, value)
+        return self
+    """
+
     def get_eval_results( self ):
         return self.evals_results
 
-    def fit( self, X_train, y_train, X_valid, y_valid ):
+    def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
         # XGBoost 用データセットに変換
         X_train_dmat = xgb.DMatrix(X_train, label=y_train)
-        X_valid_dmat = xgb.DMatrix(X_valid, label=y_valid)
+        if( self.use_valid ):
+            X_valid_dmat = xgb.DMatrix(X_valid, label=y_valid)
 
         # 学習処理
         evals_result = {}
-        self.model = xgb.train(
-            self.model_params, X_train_dmat, 
-            num_boost_round = self.train_params["num_boost_round"],
-            early_stopping_rounds = self.train_params["early_stopping_rounds"],
-            evals = [ (X_train_dmat, 'train'), (X_valid_dmat, 'valid') ],
-            evals_result = evals_result,
-            verbose_eval = self.train_params["num_boost_round"] // 50,
-        )
+        if( self.use_valid ):
+            self.model = xgb.train(
+                self.model_params, X_train_dmat, 
+                num_boost_round = self.train_params["num_boost_round"],
+                early_stopping_rounds = self.train_params["early_stopping_rounds"],
+                evals = [ (X_train_dmat, 'train'), (X_valid_dmat, 'valid') ],
+                evals_result = evals_result,
+                verbose_eval = self.train_params["num_boost_round"] // 50,
+            )
+        else:
+            self.model = xgb.train(
+                self.model_params, X_train_dmat, 
+                num_boost_round = self.train_params["num_boost_round"],
+                early_stopping_rounds = self.train_params["early_stopping_rounds"],
+                evals_result = evals_result,
+                verbose_eval = self.train_params["num_boost_round"] // 50,
+            )
 
         self.evals_results.append(evals_result)
         return self
@@ -118,12 +142,14 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
 
 
 class KerasDNNClassifier( BaseEstimator, ClassifierMixin ):
-    def __init__( self, n_input_dim, n_fmaps = 64, n_classes = 2, n_epoches = 50, batch_size = 128, debug = False ):
+    def __init__( self, n_input_dim, n_fmaps = 64, n_classes = 2, n_epoches = 50, batch_size = 128, use_valid = False, debug = False ):
         self.model = None
         self.n_epoches = n_epoches
         self.batch_size = batch_size
         self.n_classes = n_classes
+        self.use_valid = use_valid
         self.debug = debug
+        self.evals_results = []
 
         # モデルの定義
         self.model = Sequential()
@@ -137,7 +163,7 @@ class KerasDNNClassifier( BaseEstimator, ClassifierMixin ):
         self.model.add( keras.layers.Activation("relu") )
         self.model.add( keras.layers.Dropout(0.25) )
 
-        self.model.add( keras.layers.Dense(n_fmaps*3) )
+        self.model.add( keras.layers.Dense(n_fmaps*4) )
         self.model.add( keras.layers.BatchNormalization() )
         self.model.add( keras.layers.Activation("relu") )
         self.model.add( keras.layers.Dropout(0.25) )
@@ -152,27 +178,60 @@ class KerasDNNClassifier( BaseEstimator, ClassifierMixin ):
             metrics = ['accuracy']
         )
 
+        if( self.debug ):
+            self.model.summary()
         return
 
-    def fit( self, X_train, y_train, X_valid, y_valid ):
+    """
+    def get_params(self, deep=True):
+        params = {
+            "n_epoches": self.n_epoches,
+            "batch_size": self.batch_size,
+            "n_classes": self.n_classes,
+        }
+        return params
+    """
+
+    """
+    def set_params(self, **parameters):
+        for parameter, value in parameters.items():
+            setattr(self,parameter, value)
+        return self
+    """
+    
+    def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
+        # 正規化処理
+        pass
+
         # numpy 型に変換
         scaler = StandardScaler()
         scaler.fit(X_train)
         X_train = scaler.transform(X_train)
-        X_valid = scaler.transform(X_valid)
+        if( self.use_valid ):
+            X_valid = scaler.transform(X_valid)
 
         # one-hot encode
         y_train = to_categorical(y_train)
-        y_valid = to_categorical(y_valid)
+        if( self.use_valid ):
+            y_valid = to_categorical(y_valid)
 
         # 学習処理
-        self.model.fit( 
-            X_train, y_train, 
-            epochs = self.n_epoches, batch_size = self.batch_size,
-            validation_data = ( X_valid, y_valid ),
-            shuffle = True, verbose = 1,
-        )
+        evals_result = {}
+        if( self.use_valid ):
+            evals_results = self.model.fit( 
+                X_train, y_train, 
+                epochs = self.n_epoches, batch_size = self.batch_size,
+                validation_data = ( X_valid, y_valid ),
+                shuffle = True, verbose = 1,
+            )
+        else:
+            evals_results = self.model.fit( 
+                X_train, y_train, 
+                epochs = self.n_epoches, batch_size = self.batch_size,
+                shuffle = True, verbose = 1,
+            )
 
+        self.evals_results.append( evals_result )
         return self
 
     def predict(self, X_test):
@@ -206,6 +265,7 @@ class KerasResNetClassifier( BaseEstimator, ClassifierMixin ):
         image_height = 224, image_width = 224,
         n_classes = 2, 
         n_epoches = 10, batch_size = 32,
+        use_valid = False,
         debug = False
     ):
         self.model = None
@@ -215,8 +275,9 @@ class KerasResNetClassifier( BaseEstimator, ClassifierMixin ):
         self.n_epoches = n_epoches
         self.batch_size = batch_size
         self.n_classes = n_classes
-
+        self.use_valid = use_valid
         self.debug = debug
+        self.evals_results = []
 
         # モデルの定義
         base_model = keras.applications.ResNet50(
@@ -245,27 +306,40 @@ class KerasResNetClassifier( BaseEstimator, ClassifierMixin ):
         scaler = StandardScaler()
         scaler.fit(X_train)
         X_train = scaler.transform(X_train)
-        X_valid = scaler.transform(X_valid)
+        if( self.use_valid ):
+            X_valid = scaler.transform(X_valid)
 
         # shape = [N, C] -> [N,H,W,C]
         X_train = np.reshape(X_train, (X_train.shape[0], 1, 1, self.n_channles) )
-        X_valid = np.reshape(X_valid, (X_valid.shape[0], 1, 1, self.n_channles) )
         X_train = np.concatenate( [X_train for i in range(self.image_height)], 1 )
         X_train = np.concatenate( [X_train for i in range(self.image_width)], 2 )
-        X_valid = np.concatenate( [X_valid for i in range(self.image_height)], 1 )
-        X_valid = np.concatenate( [X_valid for i in range(self.image_width)], 2 )
+        if( self.use_valid ):
+            X_valid = np.reshape(X_valid, (X_valid.shape[0], 1, 1, self.n_channles) )
+            X_valid = np.concatenate( [X_valid for i in range(self.image_height)], 1 )
+            X_valid = np.concatenate( [X_valid for i in range(self.image_width)], 2 )
 
         # one-hot encode
         y_train = to_categorical(y_train)
-        y_valid = to_categorical(y_valid)
+        if( self.use_valid ):
+            y_valid = to_categorical(y_valid)
 
         # 学習処理
-        self.model.fit( 
-            X_train, y_train, 
-            epochs = self.n_epoches, batch_size = self.batch_size,
-            validation_data = ( X_valid, y_valid ),
-            shuffle = True, verbose = 1,
-        )
+        evals_result = {}
+        if( self.use_valid ):
+            evals_result = self.model.fit( 
+                X_train, y_train, 
+                epochs = self.n_epoches, batch_size = self.batch_size,
+                validation_data = ( X_valid, y_valid ),
+                shuffle = True, verbose = 1,
+            )
+        else:
+            evals_result = self.model.fit( 
+                X_train, y_train, 
+                epochs = self.n_epoches, batch_size = self.batch_size,
+                shuffle = True, verbose = 1,
+            )
+
+        self.evals_results.append( evals_result )
 
         return self
 
