@@ -16,6 +16,9 @@ Kaggle の練習用レポジトリ
     - Digit Recognizer
     - [Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
 
+- セマンティクスセグメンテーション
+    - iMaterialist (Fashion) 2019 at FGVC6
+
 - 物体検出
     - xxx
     - - Facial Keypoints Detection

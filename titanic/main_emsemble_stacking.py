@@ -40,7 +40,6 @@ if __name__ == '__main__':
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="titanic")
-    parser.add_argument("--params_file", type=str, default="parames/xgboost_classifier_titanic.yml")
     parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
@@ -104,8 +103,8 @@ if __name__ == '__main__':
     knn1 = SklearnClassifier( KNeighborsClassifier( n_neighbors = 5, p = 2, metric = 'minkowski', n_jobs = -1 ) )
     svc1 = SklearnClassifier( SVC( kernel = 'rbf', gamma = 10.0, C = 0.1, random_state = args.seed, probability = True ) )
     forest1 = SklearnClassifier( RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) )
-    xgboost1 = XGBoostClassifier( params_file_path = args.params_file, use_valid = True, debug = args.debug )
-    xgboost2 = XGBoostClassifier( params_file_path = args.params_file, use_valid = True, debug = args.debug )
+    xgboost1 = XGBoostClassifier( params_file_path = "parames/xgboost_classifier_titanic.yml", use_valid = True, debug = args.debug )
+    xgboost2 = XGBoostClassifier( params_file_path = "parames/xgboost_classifier_titanic2.yml", use_valid = True, debug = args.debug )
     dnn1 = KerasDNNClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
     dnn2 = KerasDNNClassifier( n_input_dim = 6, use_valid = True, debug = args.debug )
 
@@ -138,7 +137,10 @@ if __name__ == '__main__':
     #--------------------
     y_preds_train = model.y_preds_train
     y_preds_test = model.y_preds_test
-    #accuracy = (y_train == y_preds_train).sum()/len(y_preds_train)
+
+    # accuracy
+    accuracy = (y_train == y_preds_train).sum()/len(y_preds_train)
+    print( "ccuracy [k-fold CV train vs valid] : {:0.5f}".format(accuracy) )
 
     #================================
     # 可視化処理
@@ -166,8 +168,8 @@ if __name__ == '__main__':
         print( evals_result.keys() )
         print( evals_result['accuracy'][0:10] )
 
-        #axis.plot(evals_result['train'][xgboost1.train_params["eval_metric"]], label='train / k={}'.format(i))
-        #axis.plot(evals_result['valid'][xgboost1.train_params["eval_metric"]], label='valid / k={}'.format(i))
+        #axis.plot(evals_result['train'][xgboost1.model_params["eval_metric"]], label='train / k={}'.format(i))
+        #axis.plot(evals_result['valid'][xgboost1.model_params["eval_metric"]], label='valid / k={}'.format(i))
 
     plt.xlabel('epoches')
     plt.set_title( "DNN" )
@@ -178,21 +180,25 @@ if __name__ == '__main__':
     """
 
     # XGBoost
+    """
     fig = plt.figure()
     axis = fig.add_subplot(111)
     for i, evals_result in enumerate(xgboost1.evals_results):
-        axis.plot(evals_result['train'][xgboost1.train_params["eval_metric"]], label='train / k={}'.format(i))
-        axis.plot(evals_result['valid'][xgboost1.train_params["eval_metric"]], label='valid / k={}'.format(i))
+        axis.plot(evals_result['train'][xgboost1.model_params["eval_metric"]], label='train / k={}'.format(i))
+
+    for i, evals_result in enumerate(xgboost1.evals_results):
+        axis.plot(evals_result['valid'][xgboost1.model_params["eval_metric"]], label='valid / k={}'.format(i))
 
     axis.set_title( "xgboost" )
     plt.xlabel('iters')
-    plt.ylabel(xgboost1.train_params["eval_metric"])
+    plt.ylabel(xgboost1.model_params["eval_metric"])
     plt.xlim( [0,xgboost1.train_params["num_boost_round"]+1] )
     plt.grid()
     plt.legend()
     plt.tight_layout()
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "losses_xgboost.png"), dpi = 300, bbox_inches = 'tight' )
-
+    """
+    
     #------------------
     # 重要特徴量
     #------------------

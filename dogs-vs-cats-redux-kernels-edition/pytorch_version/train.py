@@ -116,8 +116,8 @@ if __name__ == '__main__':
     # データセットを読み込み or 生成
     # データの前処理
     #======================================================================
-    ds_train = DogsVSCatsDataset( args, args.dataset_dir, datamode = "train", enable_da = args.enable_da )
-    dloader_train = DogsVSCatsDataLoader(ds_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
+    df_train = DogsVSCatsDataset( args, args.dataset_dir, datamode = "train", enable_da = args.enable_da )
+    dloader_train = DogsVSCatsDataLoader(df_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
 
     #======================================================================
     # モデルの構造を定義する。

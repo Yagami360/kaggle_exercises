@@ -27,15 +27,15 @@ def objective_wrapper(args, X_train, y_train):
         params = {
             'booster': trial.suggest_categorical('booster', ['gbtree']),
             'objective': trial.suggest_categorical('objective', ['binary:logistic']),
-            "learning_rate" : trial.suggest_loguniform("learning_rate", 1e-8, 0.01),                      # ハイパーパラメーターのチューニング時は固定  
-            "n_estimators" : trial.suggest_int("n_estimators", 950, 1100),                                # 
+            "learning_rate" : trial.suggest_loguniform("learning_rate", 0.01, 0.01),                      # ハイパーパラメーターのチューニング時は固定  
+            "n_estimators" : trial.suggest_int("n_estimators", 900, 1200),                                # 
             'max_depth': trial.suggest_int("max_depth", 3, 9),                                            # 3 ~ 9 : 一様分布に従う。1刻み
             'min_child_weight': trial.suggest_loguniform('min_child_weight', 0.1, 10.0),                  # 0.1 ~ 10.0 : 対数が一様分布に従う
             'subsample': trial.suggest_discrete_uniform('subsample', 0.6, 0.95, 0.05),                    # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
             'colsample_bytree': trial.suggest_discrete_uniform('colsample_bytree', 0.6, 0.95, 0.05),      # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
             'gamma': trial.suggest_loguniform("gamma", 1e-8, 1.0),                                        # 1e-8 ~ 1.0 : 対数が一様分布に従う
             'alpha': trial.suggest_float("alpha", 0.0, 0.0),                                              # デフォルト値としておく。余裕があれば変更
-            'reg_lambda': trial.suggest_float("reg_lambda", 1.0, 1.0),                                         # デフォルト値としておく。余裕があれば変更
+            'reg_lambda': trial.suggest_float("reg_lambda", 1.0, 1.0),                                    # デフォルト値としておく。余裕があれば変更
             'random_state': trial.suggest_int("random_state", 71, 71),
         }
 

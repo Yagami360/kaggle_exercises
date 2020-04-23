@@ -142,8 +142,8 @@ if __name__ == '__main__':
     )
     """
 
-    ds_test = DogsVSCatsDataset( args, args.dataset_dir, "test", enable_da = False )
-    dloader_test = DogsVSCatsDataLoader(ds_test, batch_size=args.batch_size, shuffle=False, n_workers = args.n_workers )
+    df_test = DogsVSCatsDataset( args, args.dataset_dir, "test", enable_da = False )
+    dloader_test = DogsVSCatsDataLoader(df_test, batch_size=args.batch_size, shuffle=False, n_workers = args.n_workers )
 
     #======================================================================
     # モデルの構造を定義する。

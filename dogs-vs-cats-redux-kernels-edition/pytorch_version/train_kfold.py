@@ -119,8 +119,8 @@ if __name__ == '__main__':
     # データセットを読み込み or 生成
     # データの前処理
     #======================================================================
-    ds_train = DogsVSCatsDataset( args, args.dataset_dir, datamode = "train", enable_da = args.enable_da )
-    dloader_train = DogsVSCatsDataLoader(ds_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
+    df_train = DogsVSCatsDataset( args, args.dataset_dir, datamode = "train", enable_da = args.enable_da )
+    dloader_train = DogsVSCatsDataLoader(df_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
 
     #======================================================================
     # loss 関数の設定
@@ -134,7 +134,7 @@ if __name__ == '__main__':
     kf = KFold( n_splits=args.n_splits, shuffle=True, random_state=args.seed )
     #kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
-    for fold_id, (train_index, valid_index) in enumerate( kf.split(ds_train.image_names, ds_train.image_names) ):
+    for fold_id, (train_index, valid_index) in enumerate( kf.split(df_train.image_names, df_train.image_names) ):
         print( "fold_id={}, train_index[0:10]={}, valid_index[0:10]={}".format(fold_id, train_index[0:10], valid_index[0:10]) )
         print( "len(train_index)={}, len(valid_index)={}".format(len(train_index), len(valid_index)) )
 
@@ -167,8 +167,8 @@ if __name__ == '__main__':
         #======================================================================
         # 分割されたデータセットの作成
         #======================================================================
-        dloader_train_fold = DogsVSCatsDataLoader(Subset(ds_train, train_index), batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
-        dloader_val_fold = DogsVSCatsDataLoader(Subset(ds_train, valid_index), batch_size=args.batch_size_test, shuffle=False, n_workers=args.n_workers )
+        dloader_train_fold = DogsVSCatsDataLoader(Subset(df_train, train_index), batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
+        dloader_val_fold = DogsVSCatsDataLoader(Subset(df_train, valid_index), batch_size=args.batch_size_test, shuffle=False, n_workers=args.n_workers )
 
         #====================================================
         # 学習処理

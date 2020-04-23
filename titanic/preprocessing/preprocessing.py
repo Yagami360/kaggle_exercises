@@ -4,6 +4,7 @@ import pandas as pd
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 
 
 def preprocessing( df_train, df_test, debug = False ):
@@ -41,6 +42,18 @@ def preprocessing( df_train, df_test, debug = False ):
             continue
 
         #-----------------------------
+        # ラベル情報のエンコード
+        #-----------------------------
+        if( df_train[col].dtypes == "object" ):
+            label_encoder = LabelEncoder()
+            label_encoder.fit(list(df_train[col]))
+            df_train[col] = label_encoder.transform(list(df_train[col]))
+
+            label_encoder = LabelEncoder()
+            label_encoder.fit(list(df_test[col]))
+            df_test[col] = label_encoder.transform(list(df_test[col]))
+
+        #-----------------------------
         # 欠損値の埋め合わせ
         #-----------------------------
         # NAN 値の埋め合わせ（平均値）
@@ -64,20 +77,11 @@ def preprocessing( df_train, df_test, debug = False ):
         #-----------------------------
         # 正規化処理
         #-----------------------------
-        if( df_train[col].dtypes != "object" ):
-            pass
-
-        #-----------------------------
-        # ラベル情報のエンコード
-        #-----------------------------
-        if( df_train[col].dtypes == "object" ):
-            label_encoder = LabelEncoder()
-            label_encoder.fit(list(df_train[col]))
-            df_train[col] = label_encoder.transform(list(df_train[col]))
-
-            label_encoder = LabelEncoder()
-            label_encoder.fit(list(df_test[col]))
-            df_test[col] = label_encoder.transform(list(df_test[col]))
+        if( df_train[col].dtypes in ["float16", "float32", "float64", "float128"] ):
+            scaler = StandardScaler()
+            scaler.fit( df_train[col].values.reshape(-1,1) )
+            df_train[col] = scaler.transform( df_train[col].values.reshape(-1,1) )
+            df_test[col] = scaler.transform( df_test[col].values.reshape(-1,1) )
 
     return df_train, df_test
 

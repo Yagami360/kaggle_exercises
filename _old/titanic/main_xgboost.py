@@ -55,11 +55,11 @@ if __name__ == '__main__':
     #================================
     # データセットの読み込み
     #================================
-    ds_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
+    df_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
     ds_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
     ds_gender_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
     if( args.debug ):
-        print( "ds_train.head() : \n", ds_train.head() )
+        print( "df_train.head() : \n", df_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
         print( "ds_gender_submission.head() : \n", ds_gender_submission.head() )
     
@@ -67,15 +67,15 @@ if __name__ == '__main__':
     # 前処理
     #================================
     # 無用なデータを除外
-    ds_train.drop(['Name', 'PassengerId'], axis=1, inplace=True)
+    df_train.drop(['Name', 'PassengerId'], axis=1, inplace=True)
     ds_test.drop(['Name', 'PassengerId'], axis=1, inplace=True)
-    ds_train.drop(['SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
+    df_train.drop(['SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
     ds_test.drop(['SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
 
     # 全特徴量を一括で処理
-    for col in ds_train.columns:
+    for col in df_train.columns:
         if( args.debug ):
-            print( "ds_train[{}].dtypes ] : {}".format(col, ds_train[col].dtypes))
+            print( "df_train[{}].dtypes ] : {}".format(col, df_train[col].dtypes))
 
         # 目的変数
         if( col in ["Survived"] ):
@@ -86,58 +86,58 @@ if __name__ == '__main__':
         #-----------------------------
         # NAN 値の埋め合わせ（平均値）
         if( col in ["Age", 'Fare'] ):
-            ds_train[col].fillna(np.mean(ds_train[col]), inplace=True)
-            ds_test[col].fillna(np.mean(ds_train[col]), inplace=True)
+            df_train[col].fillna(np.mean(df_train[col]), inplace=True)
+            ds_test[col].fillna(np.mean(df_train[col]), inplace=True)
         # NAN 値の埋め合わせ（ゼロ値）/ int 型
-        elif( ds_train[col].dtypes in ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64"] ):
-            ds_train[col].fillna(0, inplace=True)
+        elif( df_train[col].dtypes in ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64"] ):
+            df_train[col].fillna(0, inplace=True)
             ds_test[col].fillna(0, inplace=True)
         # NAN 値の埋め合わせ（ゼロ値）/ float 型
-        elif( ds_train[col].dtypes in ["float16", "float32", "float64", "float128"] ):
-            ds_train[col].fillna(0.0, inplace=True)
+        elif( df_train[col].dtypes in ["float16", "float32", "float64", "float128"] ):
+            df_train[col].fillna(0.0, inplace=True)
             ds_test[col].fillna(0.0, inplace=True)
         # NAN 値の補完（None値）/ object 型
         else:
-            ds_train[col] = ds_train[col].fillna('NA')
+            df_train[col] = df_train[col].fillna('NA')
             ds_test[col] = ds_test[col].fillna('NA')
 
         #-----------------------------
         # 正規化処理
         #-----------------------------
         """
-        #if( ds_train[col].dtypes != "object" ):
-        if( ds_train[col].dtypes in ["float16", "float32", "float64", "float128"] ):
+        #if( df_train[col].dtypes != "object" ):
+        if( df_train[col].dtypes in ["float16", "float32", "float64", "float128"] ):
             scaler = StandardScaler()
-            scaler.fit( ds_train[col].values.reshape(-1,1) )
-            ds_train[col] = scaler.fit_transform( ds_train[col].values.reshape(-1,1) )
+            scaler.fit( df_train[col].values.reshape(-1,1) )
+            df_train[col] = scaler.fit_transform( df_train[col].values.reshape(-1,1) )
             ds_test[col] = scaler.fit_transform( ds_test[col].values.reshape(-1,1) )
         """
         
         #-----------------------------
         # ラベル情報のエンコード
         #-----------------------------
-        if( ds_train[col].dtypes == "object" ):
+        if( df_train[col].dtypes == "object" ):
             label_encoder = LabelEncoder()
-            label_encoder.fit(list(ds_train[col]))
-            ds_train[col] = label_encoder.transform(list(ds_train[col]))
+            label_encoder.fit(list(df_train[col]))
+            df_train[col] = label_encoder.transform(list(df_train[col]))
 
             label_encoder = LabelEncoder()
             label_encoder.fit(list(ds_test[col]))
             ds_test[col] = label_encoder.transform(list(ds_test[col]))
 
     # 前処理後のデータセットを外部ファイルに保存
-    ds_train.to_csv( os.path.join(args.results_dir, args.exper_name, "train_preprocessed.csv"), index=True)
+    df_train.to_csv( os.path.join(args.results_dir, args.exper_name, "train_preprocessed.csv"), index=True)
     ds_test.to_csv( os.path.join(args.results_dir, args.exper_name, "test_preprocessed.csv"), index=True)
     if( args.debug ):
-        print( "ds_train.head() : \n", ds_train.head() )
+        print( "df_train.head() : \n", df_train.head() )
         print( "ds_test.head() : \n", ds_test.head() )
 
     #================================
     # データセットの分割
     #================================
     # 学習用データセットとテスト用データセットの設定
-    X_train = ds_train.drop('Survived', axis = 1)
-    y_train = ds_train['Survived']
+    X_train = df_train.drop('Survived', axis = 1)
+    y_train = df_train['Survived']
     X_test = ds_test
     if( args.debug ):
         print( "X_train.head() : \n", X_train.head() )

@@ -1,2 +1,2 @@
-from .ensemble_regressor import *
-from .regressor_model import *
+from .ensemble_regressor_models import *
+from .regressor_models import *

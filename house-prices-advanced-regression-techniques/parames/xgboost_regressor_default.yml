@@ -5,6 +5,7 @@
         "model_params": {
             'booster': 'gbtree',
             'objective': 'reg:linear',          # 線形回帰
+            'eval_metric': 'rmse',              # 平均2乗平方根誤差
             "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
             "n_estimators" : 1050,              # 
             'max_depth': 6,                     # 3 ~ 9 : 一様分布に従う。1刻み
@@ -19,7 +20,6 @@
         "train_params": {
             "num_boost_round": 5000,            # 試行回数
             "early_stopping_rounds": 1000,      # early stopping を行う繰り返し回数
-            'eval_metric': 'rmse',              # 平均2乗平方根誤差
         },
     },
 }

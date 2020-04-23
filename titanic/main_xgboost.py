@@ -29,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument("--params_file", type=str, default="parames/xgboost_classifier_default.yml")
+    parser.add_argument('--train_type', choices=['train', 'fit'], default="fit", help="XGBoost の学習タイプ")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
@@ -100,6 +101,7 @@ if __name__ == '__main__':
     kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
     y_preds_test = []
+    evals_results = []
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
         #--------------------
         # データセットの分割
@@ -107,38 +109,66 @@ if __name__ == '__main__':
         X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
         y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
 
+        # XGBoost 用データセットに変換
+        if( args.train_type == "train" ):
+            X_train_fold_dmat = xgb.DMatrix(X_train_fold, label=y_train_fold)
+            X_valid_fold_dmat = xgb.DMatrix(X_valid_fold, label=y_valid_fold)
+            X_test_dmat = xgb.DMatrix(X_test, label=y_train)
+
         #--------------------
         # モデル定義
         #--------------------
-        model = xgb.XGBClassifier(
-            booster = model_params['booster'],
-            objective = model_params['objective'],
-            learning_rate = model_params['learning_rate'],
-            n_estimators = model_params['n_estimators'],
-            max_depth = model_params['max_depth'],
-            min_child_weight = model_params['min_child_weight'],
-            subsample = model_params['subsample'],
-            colsample_bytree = model_params['colsample_bytree'],
-            gamma = model_params['gamma'],
-            alpha = model_params['alpha'],
-            reg_lambda = model_params['reg_lambda'],
-            random_state = model_params['random_state']
-        )
+        if( args.train_type == "fit" ):
+            model = xgb.XGBClassifier(
+                booster = model_params['booster'],
+                objective = model_params['objective'],
+                learning_rate = model_params['learning_rate'],
+                n_estimators = model_params['n_estimators'],
+                max_depth = model_params['max_depth'],
+                min_child_weight = model_params['min_child_weight'],
+                subsample = model_params['subsample'],
+                colsample_bytree = model_params['colsample_bytree'],
+                gamma = model_params['gamma'],
+                alpha = model_params['alpha'],
+                reg_lambda = model_params['reg_lambda'],
+                random_state = model_params['random_state']
+            )
 
         #--------------------
         # モデルの学習処理
         #--------------------
-        model.fit(X_train_fold, y_train_fold)
+        if( args.train_type == "train" ):
+            evals_result = {}
+            model = xgb.train(
+                model_params, X_train_fold_dmat, 
+                num_boost_round = model_train_params["num_boost_round"],
+                early_stopping_rounds = model_train_params["early_stopping_rounds"],
+                evals = [ (X_train_fold_dmat, 'train'), (X_valid_fold_dmat, 'valid') ],
+                verbose_eval = model_train_params["num_boost_round"] // 50,
+                evals_result = evals_result
+            )
+            evals_results.append(evals_result)
+        else:
+            model.fit(X_train, y_train)
 
         #--------------------
         # モデルの推論処理
         #--------------------
-        y_pred_test = model.predict(X_test)
-        y_preds_test.append(y_pred_test)
-        #print( "[{}] len(y_pred_test) : {}".format(fold_id, len(y_pred_test)) )
+        # test
+        if( args.train_type == "train" ):
+            y_pred_test = model.predict(X_test_dmat)
+            y_pred_test = np.where(y_pred_test > 0.5, 1, 0)
+        else:
+            y_pred_test = model.predict(X_test)
 
-        y_pred_train[valid_index] = model.predict(X_valid_fold)
-        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_train)) )
+        y_preds_test.append(y_pred_test)
+
+        # train - valid
+        if( args.train_type == "train" ):
+            y_pred_train[valid_index] = model.predict(X_valid_fold_dmat)
+            y_pred_train = np.where(y_pred_train > 0.5, 1, 0)
+        else:
+            y_pred_train[valid_index] = model.predict(X_valid_fold)
     
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)
@@ -150,6 +180,25 @@ if __name__ == '__main__':
     #================================
     # 可視化処理
     #================================
+    #------------------
+    # 損失関数
+    #------------------
+    if( args.train_type == "train" ):
+        fig = plt.figure()
+        axis = fig.add_subplot(111)
+        for i, evals_result in enumerate(evals_results):
+            axis.plot(evals_result['train'][model_params["eval_metric"]], label='train / k={}'.format(i))
+        for i, evals_result in enumerate(evals_results):
+            axis.plot(evals_result['valid'][model_params["eval_metric"]], label='valid / k={}'.format(i))
+
+        plt.xlabel('iters')
+        plt.ylabel(model_params["eval_metric"])
+        plt.xlim( [0,model_train_params["num_boost_round"]+1] )
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig( os.path.join(args.results_dir, args.exper_name, "losees.png"), dpi = 300, bbox_inches = 'tight' )
+
     #------------------
     # 重要特徴量
     #------------------

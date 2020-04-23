@@ -51,21 +51,6 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
         return
 
     def fit( self, X_train, y_train ):
-        """
-        識別器に対し, 指定されたデータで fitting を行う関数
-        scikit-learn ライブラリの識別器 : classifiler, 推定器 : estimator が持つ共通関数
-
-        [Input]
-            X_train : np.ndarray ( shape = [n_samples, n_features] )
-                トレーニングデータ（特徴行列）
-
-            y_train : np.ndarray ( shape = [n_samples] )
-                トレーニングデータ用のクラスラベル（教師データ）のリスト
-
-        [Output]
-            self : 自身のオブジェクト
-
-        """
         # LabelEncoder クラスを使用して, クラスラベルが 0 から始まるようにする.
         # これは, self.predict() 関数内の np.argmax() 関数呼び出し時に重要となるためである.
         self.encoder.fit( y_train )
@@ -85,16 +70,6 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
         return self
 
     def predict( self, X_test ):
-        """
-        識別器に対し, fitting された結果を元に, クラスラベルの予想値を返す関数
-
-        [Input]
-            X_test : np.ndarry ( shape = [n_samples, n_features] )
-                予想したい特徴行列
-        [Output]
-            vote_results : np.ndaary ( shape = [n_samples] )
-                予想結果（クラスラベル）
-        """
         #------------------------------------------------------------------------------------------------------
         # アンサンブルの最終決定方式 vote_method が, 各弱識別器の重み付け方式 "probability_vote" のケース
         #------------------------------------------------------------------------------------------------------
@@ -134,17 +109,6 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
 
 
     def predict_proba( self, X_test ):
-        """
-        識別器に対し, fitting された結果を元に, クラスの所属確率の予想値を返す関数
-
-        [Input]
-            X_test : np.ndarry ( shape = [n_samples, n_features] )
-                予想したい特徴行列
-
-        [Output]
-            ave_probas : np.nadarry ( shape = [n_samples, n_classes] )
-                各サンプルの所属クラス確率に重み付けした結果の平均確率
-        """
         # 各弱識別器 clf の predict_prpba() 結果を predictions (list) に格納
         #predict_probas = [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ]
         #print( "EnsembleLearningClassifier.predict_proba() { predict_probas } : \n", predict_probas )
@@ -330,7 +294,7 @@ class StackingEnsembleClassifier( BaseEstimator, ClassifierMixin ):
             k += 1
 
         # 正解率の計算
-        self.accuracy = (y_train == y_preds_train).sum()/len(y_preds_train)
+        #self.accuracy = (y_train == y_preds_train).sum()/len(y_preds_train)
         #print( "[EnsembleStackingClassifier] accuracy [k-fold CV train vs valid] : {:0.5f}".format(self.accuracy) )
 
         # テストデータに対する予測値の平均をとる

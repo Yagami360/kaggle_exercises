@@ -49,8 +49,9 @@ class SklearnClassifier( BaseEstimator, ClassifierMixin ):
 
 
 class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
-    def __init__( self, params_file_path = "parames/xgboost_classifier_default.yml", use_valid = False, debug = False ):
+    def __init__( self, train_type = "fit", params_file_path = "parames/xgboost_classifier_default.yml", use_valid = False, debug = False ):
         self.model = None
+        self.train_type = train_type
         self.debug = debug
         self.use_valid = use_valid
         self.evals_results = []
@@ -83,40 +84,65 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
         return self.evals_results
 
     def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
-        # XGBoost 用データセットに変換
-        X_train_dmat = xgb.DMatrix(X_train, label=y_train)
-        if( self.use_valid ):
-            X_valid_dmat = xgb.DMatrix(X_valid, label=y_valid)
-
-        # 学習処理
-        evals_result = {}
-        if( self.use_valid ):
-            self.model = xgb.train(
-                self.model_params, X_train_dmat, 
-                num_boost_round = self.train_params["num_boost_round"],
-                early_stopping_rounds = self.train_params["early_stopping_rounds"],
-                evals = [ (X_train_dmat, 'train'), (X_valid_dmat, 'valid') ],
-                evals_result = evals_result,
-                verbose_eval = self.train_params["num_boost_round"] // 50,
+        if( self.train_type == "fit" ):
+            # モデルの定義
+            self.model = xgb.XGBClassifier(
+                booster = self.model_params['booster'],
+                objective = self.model_params['objective'],
+                learning_rate = self.model_params['learning_rate'],
+                n_estimators = self.model_params['n_estimators'],
+                max_depth = self.model_params['max_depth'],
+                min_child_weight = self.model_params['min_child_weight'],
+                subsample = self.model_params['subsample'],
+                colsample_bytree = self.model_params['colsample_bytree'],
+                gamma = self.model_params['gamma'],
+                alpha = self.model_params['alpha'],
+                reg_lambda = self.model_params['reg_lambda'],
+                random_state = self.model_params['random_state']
             )
+
+            # 学習処理
+            self.model.fit(X_train, y_train)
+
         else:
-            self.model = xgb.train(
-                self.model_params, X_train_dmat, 
-                num_boost_round = self.train_params["num_boost_round"],
-                early_stopping_rounds = self.train_params["early_stopping_rounds"],
-                evals_result = evals_result,
-                verbose_eval = self.train_params["num_boost_round"] // 50,
-            )
+            # XGBoost 用データセットに変換
+            X_train_dmat = xgb.DMatrix(X_train, label=y_train)
+            if( self.use_valid ):
+                X_valid_dmat = xgb.DMatrix(X_valid, label=y_valid)
 
-        self.evals_results.append(evals_result)
+            # 学習処理
+            evals_result = {}
+            if( self.use_valid ):
+                self.model = xgb.train(
+                    self.model_params, X_train_dmat, 
+                    num_boost_round = self.train_params["num_boost_round"],
+                    early_stopping_rounds = self.train_params["early_stopping_rounds"],
+                    evals = [ (X_train_dmat, 'train'), (X_valid_dmat, 'valid') ],
+                    evals_result = evals_result,
+                    verbose_eval = self.train_params["num_boost_round"] // 50,
+                )
+            else:
+                self.model = xgb.train(
+                    self.model_params, X_train_dmat, 
+                    num_boost_round = self.train_params["num_boost_round"],
+                    early_stopping_rounds = self.train_params["early_stopping_rounds"],
+                    evals_result = evals_result,
+                    verbose_eval = self.train_params["num_boost_round"] // 50,
+                )
+                self.evals_results.append(evals_result)
+
         return self
         
     def predict(self, X_test):
-        # XGBoost 用データセットに変換
-        X_test_dmat = xgb.DMatrix(X_test)
+        if( self.train_type == "fit" ):
+            # 推論処理
+            predicts = self.model.predict(X_test)
+        else:
+            # XGBoost 用データセットに変換
+            X_test_dmat = xgb.DMatrix(X_test)
 
-        # 推論処理
-        predicts = self.model.predict(X_test_dmat)
+            # 推論処理
+            predicts = self.model.predict(X_test_dmat)
 
         # ラベル値を argmax で 0 or 1 の離散値にする
         #predicts = np.argmax(predicts, axis = 1)
@@ -128,11 +154,15 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
         return predicts
 
     def predict_proba(self, X_test):
-        # XGBoost 用データセットに変換
-        X_test_dmat = xgb.DMatrix(X_test)
+        if( self.train_type == "fit" ):
+            predicts = self.model.predict(X_test)
+        else:
+            # XGBoost 用データセットに変換
+            X_test_dmat = xgb.DMatrix(X_test)
 
-        # 推論処理
-        predicts = self.model.predict(X_test_dmat)
+            # 推論処理
+            predicts = self.model.predict(X_test_dmat)
+
         """
         if( self.debug ):
             print( "[XBboost] predicts.shape : ", predicts.shape )
