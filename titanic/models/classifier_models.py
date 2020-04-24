@@ -31,6 +31,9 @@ class SklearnClassifier( BaseEstimator, ClassifierMixin ):
     def load_params( self, file_path ):
         with open( file_path ) as f:
             self.params = yaml.safe_load(f)
+            self.model_params = self.params["model"]["model_params"]
+
+        self.model.set_params(**self.model_params)
         return
 
     def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
@@ -49,13 +52,12 @@ class SklearnClassifier( BaseEstimator, ClassifierMixin ):
 
 
 class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
-    def __init__( self, train_type = "fit", params_file_path = "parames/xgboost_classifier_default.yml", use_valid = False, debug = False ):
+    def __init__( self, train_type = "fit", use_valid = False, debug = False ):
         self.model = None
         self.train_type = train_type
         self.debug = debug
         self.use_valid = use_valid
         self.evals_results = []
-        self.load_params( params_file_path )
         return
 
     def load_params( self, file_path ):

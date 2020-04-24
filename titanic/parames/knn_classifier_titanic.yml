@@ -1,0 +1,12 @@
+{
+    # KNeighborsClassifier の分類タスクでのデフォルトハイパーパラメーター
+    "model": {
+        "name" : "knn_classifier_default",
+        "model_params": {                       
+            "metric": "minkowski",              # 
+            "p": 1,                             # 距離の次元 Lp
+            'n_neighbors': 3,                   # 
+            "n_jobs": -1,        
+        },
+    },
+}

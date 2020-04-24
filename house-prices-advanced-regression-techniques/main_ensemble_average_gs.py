@@ -109,7 +109,7 @@ def objective_wrapper(args, X_train, y_train):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="ensemble_gridsearch", help="実験名")
+    parser.add_argument("--exper_name", default="ensemble_average_gs", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")

@@ -1,0 +1,13 @@
+{
+    # LogisticRegression の分類タスクでのデフォルトハイパーパラメーター
+    "model": {
+        "name" : "logistic_classifier_default",
+        "model_params": {                       
+            "penalty": "l2",                    # 正則化の仕方
+            "solver": "sag",                    # 最適なパラメータの探索方法 {‘newton-cg’, ‘lbfgs’, ‘liblinear’, ‘sag’, ‘saga’}
+            'C': 5,                             # 正則化の強度。値が小さいほど強い正則化
+            "random_state": 71,        
+            "n_jobs": -1,        
+        },
+    },
+}

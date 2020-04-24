@@ -30,7 +30,7 @@ def objective_wrapper(args, X_train, y_train):
             'booster': trial.suggest_categorical('booster', ['gbtree']),
             'objective': trial.suggest_categorical('objective', ['reg:linear']),
             "learning_rate" : trial.suggest_loguniform("learning_rate", 0.01, 0.01),                      # ハイパーパラメーターのチューニング時は固定  
-            "n_estimators" : trial.suggest_int("n_estimators", 900, 1100),                                # 
+            "n_estimators" : trial.suggest_int("n_estimators", 1000, 1000),                               # ハイパーパラメーターのチューニング時は固定
             'max_depth': trial.suggest_int("max_depth", 3, 9),                                            # 3 ~ 9 : 一様分布に従う。1刻み
             'min_child_weight': trial.suggest_loguniform('min_child_weight', 0.1, 10.0),                  # 0.1 ~ 10.0 : 対数が一様分布に従う
             'subsample': trial.suggest_discrete_uniform('subsample', 0.6, 0.95, 0.05),                    # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み

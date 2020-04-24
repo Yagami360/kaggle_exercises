@@ -9,7 +9,7 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold
-from xgboost import XGBClassifier
+import xgboost as xgb
 import optuna
 
 # 自作モジュール
@@ -28,7 +28,7 @@ def objective_wrapper(args, X_train, y_train):
             'booster': trial.suggest_categorical('booster', ['gbtree']),
             'objective': trial.suggest_categorical('objective', ['binary:logistic']),
             "learning_rate" : trial.suggest_loguniform("learning_rate", 0.01, 0.01),                      # ハイパーパラメーターのチューニング時は固定  
-            "n_estimators" : trial.suggest_int("n_estimators", 900, 1200),                                # 
+            "n_estimators" : trial.suggest_int("n_estimators", 1000, 1000),                               # ハイパーパラメーターのチューニング時は固定
             'max_depth': trial.suggest_int("max_depth", 3, 9),                                            # 3 ~ 9 : 一様分布に従う。1刻み
             'min_child_weight': trial.suggest_loguniform('min_child_weight', 0.1, 10.0),                  # 0.1 ~ 10.0 : 対数が一様分布に従う
             'subsample': trial.suggest_discrete_uniform('subsample', 0.6, 0.95, 0.05),                    # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
@@ -54,7 +54,7 @@ def objective_wrapper(args, X_train, y_train):
             #--------------------
             # モデルの定義
             #--------------------
-            model = XGBClassifier(
+            model = xgb.XGBClassifier(
                 booster = params['booster'],
                 objective = params['objective'],
                 learning_rate = params['learning_rate'],
@@ -91,7 +91,7 @@ if __name__ == '__main__':
     Optuna によるハイパーパラメーターのチューニング
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="xgboost_stratified_kfoldCV_optuna", help="実験名")
+    parser.add_argument("--exper_name", default="xgboost_stratified_kfoldCV_gs", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
@@ -176,7 +176,7 @@ if __name__ == '__main__':
         #--------------------
         # モデルの定義
         #--------------------
-        model_best = XGBClassifier(
+        model_best = xgb.XGBClassifier(
             booster = study.best_params['booster'],
             objective = study.best_params['objective'],
             learning_rate = study.best_params['learning_rate'],

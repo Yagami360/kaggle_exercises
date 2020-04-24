@@ -20,7 +20,6 @@ from sklearn.svm import SVC                             #
 from sklearn.ensemble import BaggingClassifier          # バギング
 from sklearn.ensemble import AdaBoostClassifier         # AdaBoost
 from sklearn.ensemble import RandomForestClassifier     # 
-from sklearn.linear_model import LogisticRegression
 import xgboost as xgb
 
 # 自作モジュール
@@ -97,14 +96,22 @@ if __name__ == '__main__':
     #--------------------
     # モデル定義
     #--------------------
-    logistic1 = SklearnClassifier( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
-    logistic2 = SklearnClassifier( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
-    logistic3 = SklearnClassifier( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
-    knn1 = SklearnClassifier( KNeighborsClassifier( n_neighbors = 5, p = 2, metric = 'minkowski', n_jobs = -1 ) )
-    svc1 = SklearnClassifier( SVC( kernel = 'rbf', gamma = 10.0, C = 0.1, random_state = args.seed, probability = True ) )
-    forest1 = SklearnClassifier( RandomForestClassifier( criterion = "gini", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) )
-    xgboost1 = XGBoostClassifier( params_file_path = "parames/xgboost_classifier_titanic.yml", use_valid = True, debug = args.debug )
-    xgboost2 = XGBoostClassifier( params_file_path = "parames/xgboost_classifier_titanic2.yml", use_valid = True, debug = args.debug )
+    logistic1 = SklearnClassifier( LogisticRegression() )
+    logistic1.load_params( "parames/logstic_classifier_titanic.yml" )
+    logistic2 = SklearnClassifier( LogisticRegression() )
+    logistic2.load_params( "parames/logstic_classifier_titanic.yml" )
+    logistic3 = SklearnClassifier( LogisticRegression() )
+    logistic3.load_params( "parames/logstic_classifier_titanic.yml" )
+    knn1 = SklearnClassifier( KNeighborsClassifier() )
+    knn1.load_params( "parames/knn_classifier_titanic.yml" )
+    svc1 = SklearnClassifier( SVC() )
+    svc1.load_params( "parames/svm_classifier_titanic.yml" )
+    forest1 = SklearnClassifier( RandomForestClassifier() )
+    forest1.load_params( "parames/random_forest_classifier_titanic.yml" )
+    xgboost1 = XGBoostClassifier( use_valid = True, debug = args.debug )
+    xgboost1.load_params( "parames/xgboost_classifier_titanic.yml" )
+    xgboost2 = XGBoostClassifier( use_valid = True, debug = args.debug )
+    xgboost2.load_params( "parames/xgboost_classifier_titanic2.yml" )
     dnn1 = KerasDNNClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
     dnn2 = KerasDNNClassifier( n_input_dim = 6, use_valid = True, debug = args.debug )
 

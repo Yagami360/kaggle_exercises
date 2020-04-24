@@ -1,0 +1,12 @@
+{
+    # SVC の分類タスクでのデフォルトハイパーパラメーター
+    "model": {
+        "name" : "svm_classifier_default",
+        "model_params": {                       
+            "kernel": "rbf",                     # 
+            'C': 995,                           # 
+            "gamma": 0.00041,                    # 
+            "random_state": 71,        
+        },
+    },
+}

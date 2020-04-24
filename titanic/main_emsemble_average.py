@@ -18,7 +18,7 @@ from sklearn.svm import SVC                             #
 from sklearn.ensemble import BaggingClassifier          # バギング
 from sklearn.ensemble import AdaBoostClassifier         # AdaBoost
 from sklearn.ensemble import RandomForestClassifier     # 
-from xgboost import XGBClassifier
+import xgboost as xgb
 
 # 自作モジュール
 from preprocessing import preprocessing
@@ -114,7 +114,7 @@ if __name__ == '__main__':
         #--------------------
         # モデル定義
         #--------------------
-        xgboost = XGBClassifier(
+        xgboost = xgb.XGBClassifier(
             booster = xgboost_params['booster'],
             objective = xgboost_params['objective'],
             learning_rate = xgboost_params['learning_rate'],

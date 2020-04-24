@@ -106,8 +106,10 @@ if __name__ == '__main__':
     knn1 = SklearnRegressor( KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski', n_jobs = -1 ) )
     svc1 = SklearnRegressor( SVR( kernel = 'rbf', C = 0.1 ) )
     forest1 = SklearnRegressor( RandomForestRegressor( criterion = "mse", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) )
-    xgboost1 = XGBoostRegressor( params_file_path = "parames/xgboost_regressor_default.yml", use_valid = True, debug = args.debug )
-    xgboost2 = XGBoostRegressor( params_file_path = "parames/xgboost_regressor_default.yml", use_valid = True, debug = args.debug )
+    xgboost1 = XGBoostRegressor( use_valid = True, debug = args.debug )
+    xgboost1.load_params( "parames/xgboost_regressor_default.yml" )
+    xgboost2 = XGBoostRegressor( use_valid = True, debug = args.debug )
+    xgboost2.load_params( "parames/xgboost_regressor_default.yml" )
 
     # アンサンブルモデル（２段）
     """
