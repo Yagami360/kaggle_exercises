@@ -4,12 +4,15 @@ import numpy as np
 import pandas as pd
 import random
 import warnings
+import json
+import yaml
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold
 
+# 機械学習モデル
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
@@ -18,7 +21,10 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import BaggingClassifier
 from sklearn.ensemble import AdaBoostClassifier
 import xgboost as xgb
+import lightgbm as lgb
+from catboost import CatBoostClassifier
 
+# Optuna
 import optuna
 
 # 自作モジュール
@@ -57,12 +63,44 @@ def objective_wrapper(args, X_train, y_train):
             }
         elif( args.classifier == "random_forest" ):
             params = {
-                "n_estimators" : trial.suggest_int("n_estimators", 100, 5000),      # チューニングは固定
-                "criterion" : trial.suggest_categorical("criterion", ['gini']),     # 不純度関数 [purity]
-                "bootstrap" : trial.suggest_int("bootstrap", 1, 1),                 # 決定木の構築に、ブートストラップサンプルを使用するか否か（default:True）
-                "oob_score" : trial.suggest_int("oob_score", 0, 1),                 # Whether to use out-of-bag samples to estimate the generalization accuracy.(default=False)
+                "oob_score" : trial.suggest_int("oob_score", 0, 1),                         # Whether to use out-of-bag samples to estimate the generalization accuracy.(default=False)
+                "n_estimators" : trial.suggest_int("n_estimators", 1000, 1000),             # チューニングは固定
+                "criterion" : trial.suggest_categorical("criterion", ['gini', "entropy"]),  # 不純度関数 [purity]
+                'max_features': trial.suggest_categorical('max_features', ['auto', 0.2, 0.4, 0.6, 0.8,]),                            
+                'min_samples_split': trial.suggest_int('min_samples_split', 2, 10),         # min_samples_split must be an integer greater than 1 or a float in (0.0, 1.0]; got the integer 1                   
+                'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 10), 
+                "bootstrap" : trial.suggest_int("bootstrap", True, True),                   # 決定木の構築に、ブートストラップサンプルを使用するか否か（default:True）
+                "oob_score" : trial.suggest_int("oob_score", False, True),                  # Whether to use out-of-bag samples to estimate the generalization accuracy.(default=False)
                 'random_state': trial.suggest_int("random_state", 71, 71),
                 'n_jobs': trial.suggest_int("n_jobs", -1, -1),
+            }
+        elif( args.classifier == "bagging" ):
+            params = {
+                "n_estimators" : trial.suggest_int("n_estimators", 1000, 1000),             # チューニングは固定
+                'max_samples': trial.suggest_float('max_samples', 0.0, 1.0),                # base_estimator に設定した弱識別器の内, 使用するサンプルの割合
+                'max_features': trial.suggest_float('max_features', 0.0, 1.0),              # The number of features to draw from X to train each base estimator.
+                "bootstrap" : trial.suggest_int("bootstrap", True, True),                   # 決定木の構築に、ブートストラップサンプルを使用するか否か（default:True）
+                "bootstrap_features" : trial.suggest_int("bootstrap", False, True),
+                'random_state': trial.suggest_int("random_state", 71, 71),
+                'n_jobs': -1,
+                # 弱識別器のパラメータ（先頭に "base_estimator__" をつけることでアクセス可能 ）                
+                'base_estimator__max_depth': trial.suggest_int("base_estimator__random_state", 1, 8),
+                'base_estimator__max_features': trial.suggest_float('base_estimator__max_features', 0.0, 1.0),
+                'base_estimator__min_samples_leaf': trial.suggest_int('base_estimator__min_samples_leaf', 1, 10),
+                'base_estimator__min_samples_split': trial.suggest_int('base_estimator__min_samples_split', 2, 10),
+                'base_estimator__random_state': trial.suggest_int("base_estimator__random_state", 71, 71),
+            }
+        elif( args.classifier == "adaboost" ):
+            params = {
+                "n_estimators" : trial.suggest_int("n_estimators", 1000, 1000),             # チューニングは固定
+                "learning_rate" : trial.suggest_loguniform("learning_rate", 0.01, 0.01),    # ハイパーパラメーターのチューニング時は固定  
+                'random_state': 71,
+                # 弱識別器のパラメータ（先頭に "base_estimator__" をつけることでアクセス可能 ）                
+                'base_estimator__max_depth': trial.suggest_int("base_estimator__random_state", 1, 10),
+                'base_estimator__max_features': trial.suggest_float('base_estimator__max_features', 0.0, 1.0),
+                'base_estimator__min_samples_leaf': trial.suggest_int('base_estimator__min_samples_leaf', 1, 10),
+                'base_estimator__min_samples_split': trial.suggest_int('base_estimator__min_samples_split', 2, 10),
+                'base_estimator__random_state': trial.suggest_int("base_estimator__random_state", 71, 71),
             }
         elif( args.classifier == "xgboost" ):
             params = {
@@ -77,6 +115,33 @@ def objective_wrapper(args, X_train, y_train):
                 'gamma': trial.suggest_loguniform("gamma", 1e-8, 1.0),                                        # 1e-8 ~ 1.0 : 対数が一様分布に従う
                 'alpha': trial.suggest_float("alpha", 0.0, 0.0),                                              # デフォルト値としておく。余裕があれば変更
                 'reg_lambda': trial.suggest_float("reg_lambda", 1.0, 1.0),                                    # デフォルト値としておく。余裕があれば変更
+                'random_state': trial.suggest_int("random_state", 71, 71),
+            }
+        elif( args.classifier == "lightgbm" ):
+            params = {
+                'boosting_type': trial.suggest_categorical('boosting', ['gbdt', 'dart', 'goss']),
+                'objective': 'binary',
+                'metric': 'binary_logloss',
+                'num_class': 1,
+                'num_leaves': trial.suggest_int("num_leaves", 10, 500),
+                'learning_rate': trial.suggest_loguniform("learning_rate", 0.01, 0.01),
+                'max_depth': trial.suggest_int("max_depth", 1, 5),
+                'reg_alpha': trial.suggest_uniform("reg_alpha", 0, 100),
+                'reg_lambda': trial.suggest_uniform("reg_lambda", 1, 5),
+                'num_leaves': trial.suggest_int("num_leaves", 10, 500),
+                'device': trial.suggest_categorical('boosting', ['cpu']),
+                'verbose' : 0,
+            }
+        elif( args.classifier == "catboost" ):
+            params = {
+                'eval_metric': trial.suggest_categorical('eval_metric', ['Accuracy']),
+                'iterations' : trial.suggest_int('iterations', 500, 500),                             # まず大きな数を設定しておく
+                'learning_rate' : trial.suggest_loguniform('learning_rate', 0.01, 0.01),               
+                'depth' : trial.suggest_int('depth', 4, 10),                                       
+                'random_strength' :trial.suggest_int('random_strength', 0, 100),                       
+                'bagging_temperature' :trial.suggest_loguniform('bagging_temperature', 0.01, 100.00), 
+                'od_type': trial.suggest_categorical('od_type', ['IncToDec', 'Iter']),
+                'od_wait' :trial.suggest_int('od_wait', 100, 100),                                      # 最適な指標値に達した後、iterationを続ける数。
                 'random_state': trial.suggest_int("random_state", 71, 71),
             }
 
@@ -103,8 +168,16 @@ def objective_wrapper(args, X_train, y_train):
                 model = SVC()
             elif( args.classifier == "random_forest" ):
                 model = RandomForestClassifier()
+            elif( args.classifier == "bagging" ):
+                model = BaggingClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
+            elif( args.classifier == "adaboost" ):
+                model = AdaBoostClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
             elif( args.classifier == "xgboost" ):
                 model = xgb.XGBClassifier()
+            elif( args.classifier == "lightgbm" ):
+                model = lgb.LGBMClassifier()
+            elif( args.classifier == "catboost" ):
+                model = CatBoostClassifier()
 
             # モデルのチューニングパラメータ設定
             model.set_params( **params )
@@ -126,12 +199,12 @@ def objective_wrapper(args, X_train, y_train):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="optuna_gs", help="実験名")
+    parser.add_argument("--exper_name", default="tuning_hyper_params", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="titanic")
-    parser.add_argument("--classifier", choices=["logistic", "knn", "svm", "random_forest", "xgboost"], default="logistic", help="チューニングするモデル")
+    parser.add_argument("--classifier", choices=["logistic", "knn", "svm", "random_forest", "bagging", "adaboost", "xgboost", "lightgbm", "catboost"], default="logistic", help="チューニングするモデル")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument("--n_splits_gs", type=int, default=4, help="ハイパーパラメーターチューニング時の CV での学習用データセットの分割数")
     parser.add_argument("--n_trials", type=int, default=100, help="Optuna での試行回数")
@@ -192,9 +265,24 @@ if __name__ == '__main__':
     #==============================
     study = optuna.create_study(direction="maximize")
     study.optimize(objective_wrapper(args, X_train,y_train), n_trials=args.n_trials)
-    print('best params : ', study.best_params)
-    #print('best best_trial : ', study.best_trial)
-    
+
+    for key, value in study.best_params.items():
+        print(key + ' : ' + str(value))
+
+    # チューニングパラメータの外部ファイルへの保存
+    df_hist = study.trials_dataframe()
+    df_hist.to_csv( os.path.join( args.results_dir, args.exper_name, "tuning.csv") )
+
+    with open( os.path.join( args.results_dir, args.exper_name, args.exper_name + ".yml"), 'w') as f:
+        param = { 
+            "model": {
+                "name" : args.classifier,
+                "model_params": study.best_params,
+            },
+        }
+        #yaml.dump(param, f)
+        json.dump(param, f, indent=4)
+
     #================================
     # 最良モデルでの学習 & 推論
     #================================    
@@ -213,32 +301,40 @@ if __name__ == '__main__':
         # モデルの定義
         #--------------------
         if( args.classifier == "logistic" ):
-            model_best = LogisticRegression()
+            model = LogisticRegression()
         elif( args.classifier == "knn" ):
-            model_best = KNeighborsClassifier()
+            model = KNeighborsClassifier()
         elif( args.classifier == "svm" ):
-            model_best = SVC()
+            model = SVC()
         elif( args.classifier == "random_forest" ):
-            model_best = RandomForestClassifier()
+            model = RandomForestClassifier()
+        elif( args.classifier == "bagging" ):
+            model = BaggingClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
+        elif( args.classifier == "adaboost" ):
+            model = AdaBoostClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
         elif( args.classifier == "xgboost" ):
-            model_best = xgb.XGBClassifier()
+            model = xgb.XGBClassifier()
+        elif( args.classifier == "lightgbm" ):
+            model = lgb.LGBMRegressor()
+        elif( args.classifier == "catboost" ):
+            model = CatBoostClassifier()
 
         # モデルのパラメータ設定
-        model_best.set_params( **study.best_params )
+        model.set_params( **study.best_params )
 
         #--------------------
         # モデルの学習処理
         #--------------------
-        model_best.fit(X_train_fold, y_train_fold)
+        model.fit(X_train_fold, y_train_fold)
 
         #--------------------
         # モデルの推論処理
         #--------------------
-        y_pred_test = model_best.predict(X_test)
+        y_pred_test = model.predict(X_test)
         y_preds_test.append(y_pred_test)
         #print( "[{}] len(y_pred_test) : {}".format(fold_id, len(y_pred_test)) )
 
-        y_pred_train[valid_index] = model_best.predict(X_valid_fold)
+        y_pred_train[valid_index] = model.predict(X_valid_fold)
         #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_train)) )
     
     # k-fold CV で平均化

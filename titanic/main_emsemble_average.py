@@ -14,14 +14,17 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC                             # 
-from sklearn.ensemble import BaggingClassifier          # バギング
-from sklearn.ensemble import AdaBoostClassifier         # AdaBoost
-from sklearn.ensemble import RandomForestClassifier     # 
+from sklearn.svm import SVC
+from sklearn.ensemble import BaggingClassifier
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.ensemble import RandomForestClassifier
 import xgboost as xgb
+import lightgbm as lgb
+from catboost import CatBoostClassifier
 
 # 自作モジュール
 from preprocessing import preprocessing
+from models import SklearnClassifier, XGBoostClassifier, KerasMLPClassifier
 from models import WeightAverageEnsembleClassifier
 
 
@@ -36,8 +39,8 @@ if __name__ == '__main__':
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="titanic")
-    parser.add_argument("--params_file", type=str, default="parames/xgboost_classifier_titanic.yml")
     parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
+    parser.add_argument("--vote_method", choices=["majority_vote", "probability_vote"], default="probability_vote", help="固定値で平均化 or 確率値で平均化")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -92,14 +95,6 @@ if __name__ == '__main__':
     #===========================================
     # k-fold CV による学習 & 推論処理
     #===========================================
-    # モデルのパラメータの読み込み
-    with open( args.params_file ) as f:
-        params = yaml.safe_load(f)
-        xgboost_params = params["model"]["model_params"]
-        xgboost_train_params = params["model"]["train_params"]
-        if( args.debug ):
-            print( "params :\n", params )
-
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
     kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
@@ -114,99 +109,49 @@ if __name__ == '__main__':
         #--------------------
         # モデル定義
         #--------------------
-        xgboost = xgb.XGBClassifier(
-            booster = xgboost_params['booster'],
-            objective = xgboost_params['objective'],
-            learning_rate = xgboost_params['learning_rate'],
-            n_estimators = xgboost_params['n_estimators'],
-            max_depth = xgboost_params['max_depth'],
-            min_child_weight = xgboost_params['min_child_weight'],
-            subsample = xgboost_params['subsample'],
-            colsample_bytree = xgboost_params['colsample_bytree'],
-            gamma = xgboost_params['gamma'],
-            alpha = xgboost_params['alpha'],
-            reg_lambda = xgboost_params['reg_lambda'],
-            random_state = xgboost_params['random_state']
-        )
+        logistic1 = SklearnClassifier( LogisticRegression() )
+        logistic1.load_params( "parames/logstic_classifier_titanic.yml" )
 
-        kNN = KNeighborsClassifier(
-                n_neighbors = 5,
-                p = 2,
-                metric = 'minkowski'
-            )
+        knn1 = SklearnClassifier( KNeighborsClassifier() )
+        knn1.load_params( "parames/knn_classifier_titanic.yml" )
 
-        svm = SVC( 
-                kernel = 'rbf',     # rbf : RFBカーネルでのカーネルトリックを指定
-                gamma = 10.0,       # RFBカーネル関数のγ値
-                C = 0.1,            # C-SVM の C 値
-                random_state = args.seed,   #
-                probability = True  # 学習後の predict_proba method による予想確率を有効にする
-        )
+        svm1 = SklearnClassifier( SVC(probability=True) )
+        svm1.load_params( "parames/svm_classifier_titanic.yml" )
 
-        forest = RandomForestClassifier(
-                    criterion = "gini",     # 不純度関数 [purity]
-                    bootstrap = True,       # 決定木の構築に、ブートストラップサンプルを使用するか否か（default:True）
-                    n_estimators = 1001,    # 弱識別器（決定木）の数
-                    n_jobs = -1,            # The number of jobs to run in parallel for both fit and predict ( -1 : 全てのCPUコアで並列計算)
-                    random_state = args.seed,       #
-                    oob_score = True        # Whether to use out-of-bag samples to estimate the generalization accuracy.(default=False)
-                )
+        forest1 = SklearnClassifier( RandomForestClassifier() )
+        forest1.load_params( "parames/random_forest_classifier_titanic.yml" )
 
-        decition_tree = DecisionTreeClassifier(
-                            criterion = 'entropy',       # 不純度として, 交差エントロピー
-                            max_depth = None,            # None : If None, then nodes are expanded until all leaves are pure or until all leaves contain less than min_samples_split samples.(default=None)
-                            random_state = args.seed
-                        )
+        xgboost1 = XGBoostClassifier( model = xgb.XGBClassifier, train_type = "fit", use_valid = True, debug = args.debug )
+        xgboost1.load_params( "parames/xgboost_classifier_titanic.yml" )
 
-        bagging = BaggingClassifier(
-                    base_estimator = decition_tree,   # 弱識別器をして決定木を設定
-                    n_estimators = 1001,              # バギングを構成する弱識別器の数
-                    max_samples = 1.0,                # The number of samples to draw from X to train each base estimator.
-                                                      # If float, then draw max_samples * X.shape[0] samples.
-                                                      # base_estimator に設定した弱識別器の内, 使用するサンプルの割合
-                                                      # 
-                    max_features = 1.0,               # The number of features to draw from X to train each base estimator.
-                                                        # If float, then draw max_features * X.shape[1] features.
-                    bootstrap = True,                 # ブートストラップサンプリングを行う 
-                    bootstrap_features = False,       #
-                    n_jobs = -1, 
-                    random_state = args.seed
-                )
-        
-        ada = AdaBoostClassifier(
-                base_estimator = decition_tree,       # 弱識別器をして決定木を設定
-                n_estimators = 1001,                  # バギングを構成する弱識別器の数 
-                learning_rate = 0.01,                 # 
-                random_state = args.seed              #
-            )
+        dnn1 = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
 
+        # アンサンブルモデル
         """
         model = WeightAverageEnsembleClassifier(
             classifiers  = [ xgboost, kNN, svm, forest, bagging, ada ],
             weights = [0.75, 0.25, 0.0, 0.25, 0.25, 0.25 ],
-            vote_method = "majority_vote",
+            vote_method = args.vote_method,
         )
         """
         model = WeightAverageEnsembleClassifier(
-            classifiers  = [ xgboost, kNN, svm, forest ],
-            weights = [0.75, 0.05, 0.05, 0.25, ],
-            vote_method = "majority_vote",
+            classifiers  = [ logistic1, knn1, svm1, forest1, xgboost1, dnn1 ],
+            weights = [ 0.01, 0.01, 0.05, 0.10, 0.75, 0.10 ],
+            vote_method = args.vote_method,
         )
 
         #--------------------
         # モデルの学習処理
         #--------------------
-        model.fit(X_train_fold, y_train_fold)
+        model.fit(X_train_fold, y_train_fold, X_valid_fold, y_valid_fold )
 
         #--------------------
         # モデルの推論処理
         #--------------------
         y_pred_test = model.predict(X_test)
         y_preds_test.append(y_pred_test)
-        #print( "[{}] len(y_pred_test) : {}".format(fold_id, len(y_pred_test)) )
 
         y_pred_val[valid_index] = model.predict(X_valid_fold)
-        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_val)) )
     
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)

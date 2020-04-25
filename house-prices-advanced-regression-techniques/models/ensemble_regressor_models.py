@@ -63,16 +63,16 @@ class WeightAverageEnsembleRegressor( BaseEstimator, RegressorMixin ):
 
         return
 
-    def fit( self, X_train, y_train ):
+    def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
         # self.regressors に設定されている分類器のクローン clone(reg) で fitting
         self.fitted_regressors = []
         for i, reg in enumerate( tqdm(self.regressors, desc = "fitting regressors") ):
             if( self.fitting[i] ):
                 # clone() : 同じパラメータの 推定器を deep copy
                 if( self.clone ):
-                    fitted_reg = clone(reg).fit( X_train, y_train )
+                    fitted_reg = clone(reg).fit( X_train, y_train, X_valid, y_valid )
                 else:
-                    fitted_reg = reg.fit( X_train, y_train )
+                    fitted_reg = reg.fit( X_train, y_train, X_valid, y_valid )
             else:
                 if( self.clone ):
                     fitted_reg = clone(reg)
@@ -84,9 +84,6 @@ class WeightAverageEnsembleRegressor( BaseEstimator, RegressorMixin ):
         return self # scikit-learn の fit() は self を返す
 
     def predict( self, X_test ):
-        if( self.fitted_regressors == None ):
-            return
-
         # 各弱回帰器 reg の predict_prpba() 結果を predictions (list) に格納
         predict_probas = np.asarray( [ reg.predict(X_test) for reg in self.fitted_regressors ] )     # shape = [n_classifer, n_features]
 

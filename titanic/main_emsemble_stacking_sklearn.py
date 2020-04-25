@@ -26,7 +26,7 @@ from sklearn.ensemble import StackingClassifier
 
 # 自作モジュール
 from preprocessing import preprocessing
-from models import SklearnClassifier, XGBoostClassifier, KerasDNNClassifier, KerasResNetClassifier
+from models import SklearnClassifier, XGBoostClassifier, KerasMLPClassifier, KerasResNetClassifier
 
 
 if __name__ == '__main__':

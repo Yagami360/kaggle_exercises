@@ -1,0 +1,16 @@
+{
+    "model": {
+        "name": "catboost",
+        "model_params": {
+            "eval_metric": "Accuracy",
+            "iterations": 500,
+            "learning_rate": 0.01,
+            "depth": 4,
+            "random_strength": 21,
+            "bagging_temperature": 0.7701800395208085,
+            "od_type": "IncToDec",
+            "od_wait": 100,
+            "random_state": 71
+        }
+    }
+}

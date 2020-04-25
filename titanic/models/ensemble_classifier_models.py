@@ -15,10 +15,10 @@ from sklearn.model_selection import StratifiedKFold
 
 class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
     """
-    アンサンブルモデルの識別器 classifier の自作クラス.
+    重み付け平均化でのアンサンブルモデルの識別器 classifier の自作クラス.
     scikit-learn ライブラリの推定器 estimator の基本クラス BaseEstimator, ClassifierMixin を継承している.
     """
-    def __init__( self, classifiers, weights = None, vote_method = "majority_vote", clone = False ):
+    def __init__( self, classifiers, weights = None, vote_method = "probability_vote", clone = False ):
         """
         Args :
             classifiers : list <classifier オブジェクト>
@@ -28,7 +28,7 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
             vote_method : str ( "majority_vote" or "probability_vote" )
                 アンサンブルによる最終的な判断判断手法 : __init()__ の引数と同名のオブジェクトの属性
                 "majority_vote"    : 弱識別器の多数決で決定する.多数決方式 (＝クラスラベルの argmax() 結果）
-                "probability_vote" : 弱識別器の重み付け結果で決定する.（＝クラスの所属確率の argmax() 結果）
+                "probability_vote" : 弱識別器の確率値での重み付け結果で決定する.（＝クラスの所属確率の argmax() 結果）
         """
         self.classifiers = classifiers
         self.fitted_classifiers = classifiers
@@ -50,10 +50,10 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
 
         return
 
-    def fit( self, X_train, y_train ):
-        # LabelEncoder クラスを使用して, クラスラベルが 0 から始まるようにする.
-        # これは, self.predict() 関数内の np.argmax() 関数呼び出し時に重要となるためである.
+    def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
+        # LabelEncoder クラスを使用して, クラスラベルが 0 から始まるようにする.これは, self.predict() 関数内の np.argmax() 関数呼び出し時に重要となるためである.
         self.encoder.fit( y_train )
+        y_train = self.encoder.transform(y_train)
         self.n_classes = self.encoder.classes_
 
         # self.classifiers に設定されている分類器のクローン clone(clf) で fitting
@@ -61,9 +61,9 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
         for clf in self.classifiers:
             if( self.clone ):
                 # clone() : 同じパラメータの 推定器を生成
-                fitted_clf = clone(clf).fit( X_train, self.encoder.transform(y_train) )
+                fitted_clf = clone(clf).fit( X_train, y_train, X_valid, y_valid )
             else:
-                fitted_clf = clf.fit( X_train, self.encoder.transform(y_train) )
+                fitted_clf = clf.fit( X_train, y_train, X_valid, y_valid )
 
             self.fitted_classifiers.append( fitted_clf )
 
@@ -83,20 +83,15 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
         #------------------------------------------------------------------------------------------------------
         else:
             # 各弱識別器 clf の predict() 結果を predictions (list) に格納
-            predictions = [ clf.predict(X_test) for clf in self.fitted_classifiers ]
-            #print( "predictions : \n", predictions)
-            #print( "predictions.shape : \n", predictions[0].shape)
+            predictions = [ clf.predict(X_test) for clf in self.fitted_classifiers ]            
+            for i in range(len(predictions)):
+                print( "predictions[{}].shape : {}".format(i, predictions[i].shape) )
+                print( "predictions[{}][0:5] : {}".format(i, predictions[i][0:5]) )
 
             # predictions を 転置し, 行と列 (shape) を反転
-            # np.asarray() :  np.array とほとんど同じように使えるが, 引数に ndarray を渡した場合は配列のコピーをせずに引数をそのまま返す。
             predictions = np.asarray( predictions ).T
-            #print( "predictions : \n", predictions)
-            #print( "predictions.shape : \n", predictions[0].shape)
 
             # 各サンプルの所属クラス確率に重み付けで足し合わせた結果が最大となるようにし、列番号を返すようにする.
-            # この処理を np.apply_along_axis() 関数を使用して実装
-            # np.apply_along_axis() : Apply a function to 1-D slices along the given axis.
-            # Execute func1d(a, *args) where func1d operates on 1-D arrays and a is a 1-D slice of arr along axis.
             vote_results = np.apply_along_axis(
                                lambda x : np.argmax( np.bincount( x, weights = self.weights ) ),    # 
                                axis = 1,                                                            #
@@ -107,12 +102,15 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
         vote_results = self.encoder.inverse_transform( vote_results )
         return vote_results
 
-
     def predict_proba( self, X_test ):
         # 各弱識別器 clf の predict_prpba() 結果を predictions (list) に格納
-        #predict_probas = [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ]
-        #print( "EnsembleLearningClassifier.predict_proba() { predict_probas } : \n", predict_probas )
-        predict_probas = np.asarray( [ clf.predict_proba(X_test) for clf in self.fitted_classifiers ] )
+        predict_probas = []
+        for clf in self.fitted_classifiers:
+            predict_proba = clf.predict_proba(X_test)
+            predict_probas.append(predict_proba)
+            print( "predict_proba.shape : ", predict_proba.shape )  # shape = [n_classifer, n_features]
+
+        predict_probas = np.asarray( predict_probas )
 
         # 平均化
         ave_probas = np.average( predict_probas, axis = 0, weights = self.weights )

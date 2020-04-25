@@ -16,15 +16,15 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC                             # 
-from sklearn.ensemble import BaggingClassifier          # バギング
-from sklearn.ensemble import AdaBoostClassifier         # AdaBoost
-from sklearn.ensemble import RandomForestClassifier     # 
+from sklearn.svm import SVC
+from sklearn.ensemble import BaggingClassifier
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.ensemble import RandomForestClassifier
 import xgboost as xgb
 
 # 自作モジュール
 from preprocessing import preprocessing
-from models import SklearnClassifier, XGBoostClassifier, KerasDNNClassifier, KerasResNetClassifier
+from models import SklearnClassifier, XGBoostClassifier, KerasMLPClassifier, KerasResNetClassifier
 from models import StackingEnsembleClassifier
 
 
@@ -108,12 +108,12 @@ if __name__ == '__main__':
     svc1.load_params( "parames/svm_classifier_titanic.yml" )
     forest1 = SklearnClassifier( RandomForestClassifier() )
     forest1.load_params( "parames/random_forest_classifier_titanic.yml" )
-    xgboost1 = XGBoostClassifier( use_valid = True, debug = args.debug )
+    xgboost1 = XGBoostClassifier( model = xgb.XGBClassifier, train_type = "fit", use_valid = True, debug = args.debug )
     xgboost1.load_params( "parames/xgboost_classifier_titanic.yml" )
-    xgboost2 = XGBoostClassifier( use_valid = True, debug = args.debug )
+    xgboost2 = XGBoostClassifier( model = xgb.XGBClassifier, train_type = "fit", use_valid = True, debug = args.debug )
     xgboost2.load_params( "parames/xgboost_classifier_titanic2.yml" )
-    dnn1 = KerasDNNClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
-    dnn2 = KerasDNNClassifier( n_input_dim = 6, use_valid = True, debug = args.debug )
+    dnn1 = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
+    dnn2 = KerasMLPClassifier( n_input_dim = 6, use_valid = True, debug = args.debug )
 
     # アンサンブルモデル（２段）
     """

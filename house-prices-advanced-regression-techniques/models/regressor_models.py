@@ -29,6 +29,13 @@ class SklearnRegressor( BaseEstimator, RegressorMixin ):
         self.model.set_params(**self.model_params)
         return
 
+    def get_params(self, deep=True):
+        return self.model.get_params(deep)
+
+    def set_params(self, **params):
+        self.model.set_params(params)
+        return self
+
     def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
         self.model.fit(X_train, y_train)
         return self
@@ -45,8 +52,8 @@ class SklearnRegressor( BaseEstimator, RegressorMixin ):
 
 
 class XGBoostRegressor( BaseEstimator, RegressorMixin ):
-    def __init__( self, train_type = "fit", use_valid = False, debug = False ):
-        self.model = None
+    def __init__( self, model, train_type = "fit", use_valid = False, debug = False ):
+        self.model = model
         self.train_type = train_type
         self.debug = debug
         self.use_valid = use_valid
@@ -61,19 +68,18 @@ class XGBoostRegressor( BaseEstimator, RegressorMixin ):
             self.params = yaml.safe_load(f)
             self.model_params = self.params["model"]["model_params"]
             self.train_params = self.params["model"]["train_params"]
+
+        self.set_params(**self.model_params)
         return
 
     """
     def get_params(self, deep=True):
-        return self.params
+        return self.model.get_params(deep)
     """
 
-    """
-    def set_params(self, **parameters):
-        for parameter, value in parameters.items():
-            setattr(self,parameter, value)
+    def set_params(self, **params):
+        self.model.set_params(params)
         return self
-    """
 
     def get_eval_results( self ):
         return self.evals_results
@@ -141,28 +147,19 @@ class XGBoostRegressor( BaseEstimator, RegressorMixin ):
 
         # ラベル値を argmax で 0 or 1 の離散値にする
         #predicts = np.argmax(predicts, axis = 1)
-        """
-        if( self.debug ):
-            print( "[XBboost] predicts.shape : ", predicts.shape )
-            #print( "[XBboost] predicts[0:10] : ", predicts[0:5] )
-        """
         return predicts
 
     def predict_proba(self, X_test):
         if( self.train_type == "fit" ):
-            predicts = self.model.predict(X_test)
+            predicts = self.model.predict_proba(X_test)
         else:
             # XGBoost 用データセットに変換
             X_test_dmat = xgb.DMatrix(X_test)
 
             # 推論処理
+            # xgb.train() での retrun の XGBRegresser では predict_proba 使用不可
             predicts = self.model.predict(X_test_dmat)
 
-        """
-        if( self.debug ):
-            print( "[XBboost] predicts.shape : ", predicts.shape )
-            #print( "[XBboost] predicts[0:10] : ", predicts[0:5] )
-        """
         return predicts
 
 
