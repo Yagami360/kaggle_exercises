@@ -83,19 +83,21 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
         #------------------------------------------------------------------------------------------------------
         else:
             # 各弱識別器 clf の predict() 結果を predictions (list) に格納
-            predictions = [ clf.predict(X_test) for clf in self.fitted_classifiers ]            
+            predictions = [ clf.predict(X_test) for clf in self.fitted_classifiers ]
+            """            
             for i in range(len(predictions)):
                 print( "predictions[{}].shape : {}".format(i, predictions[i].shape) )
                 print( "predictions[{}][0:5] : {}".format(i, predictions[i][0:5]) )
+            """
 
             # predictions を 転置し, 行と列 (shape) を反転
             predictions = np.asarray( predictions ).T
 
             # 各サンプルの所属クラス確率に重み付けで足し合わせた結果が最大となるようにし、列番号を返すようにする.
             vote_results = np.apply_along_axis(
-                               lambda x : np.argmax( np.bincount( x, weights = self.weights ) ),    # 
-                               axis = 1,                                                            #
-                               arr = predictions                                                    # ndarray : Input array
+                               lambda x : np.argmax( np.bincount( x, weights = self.weights ) ),
+                               axis = 1,
+                               arr = predictions
                            )
 
         # vote_results を LabelEncoder で逆行列化して, shape を反転
@@ -108,7 +110,7 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
         for clf in self.fitted_classifiers:
             predict_proba = clf.predict_proba(X_test)
             predict_probas.append(predict_proba)
-            print( "predict_proba.shape : ", predict_proba.shape )  # shape = [n_classifer, n_features]
+            #print( "predict_proba.shape : ", predict_proba.shape )  # shape = [n_classifer, n_features]
 
         predict_probas = np.asarray( predict_probas )
 

@@ -4,15 +4,19 @@
 *.csv
 *.html
 *.code-workspace
+*.tfevents
 *.tfevents.*
 *.out
 *.pth
 *.h5
+*.tsv
+catboost_training.json
 
 git_pull_reset.sh
 
 titanic/datasets/*
 titanic/results/*
+titanic/catboost_info/*
 
 house-prices-advanced-regression-techniques/datasets/*
 house-prices-advanced-regression-techniques/results/*
@@ -23,3 +27,7 @@ dogs-vs-cats-redux-kernels-edition/keras_version/results/*
 dogs-vs-cats-redux-kernels-edition/keras_version/_debug/*
 dogs-vs-cats-redux-kernels-edition/keras_version/checkpoints/*
 dogs-vs-cats-redux-kernels-edition/keras_version/tensorboard/*
+
+bike-sharing-demand/datasets/*
+bike-sharing-demand/results/*
+bike-sharing-demand/catboost_info/*

@@ -21,10 +21,11 @@ from sklearn.ensemble import BaggingClassifier
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
 import xgboost as xgb
+import catboost
 
 # 自作モジュール
 from preprocessing import preprocessing
-from models import SklearnClassifier, XGBoostClassifier, KerasMLPClassifier, KerasResNetClassifier
+from models import SklearnClassifier, XGBoostClassifier, CatBoostClassifier, KerasMLPClassifier
 from models import StackingEnsembleClassifier
 
 
@@ -102,18 +103,32 @@ if __name__ == '__main__':
     logistic2.load_params( "parames/logstic_classifier_titanic.yml" )
     logistic3 = SklearnClassifier( LogisticRegression() )
     logistic3.load_params( "parames/logstic_classifier_titanic.yml" )
+
     knn1 = SklearnClassifier( KNeighborsClassifier() )
     knn1.load_params( "parames/knn_classifier_titanic.yml" )
+
     svc1 = SklearnClassifier( SVC() )
     svc1.load_params( "parames/svm_classifier_titanic.yml" )
+
     forest1 = SklearnClassifier( RandomForestClassifier() )
     forest1.load_params( "parames/random_forest_classifier_titanic.yml" )
+
+    bagging1 = SklearnClassifier( BaggingClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) ) )
+    #bagging1.load_params( "parames/bagging_classifier_titanic.yml" )
+
+    adaboost1 = SklearnClassifier( AdaBoostClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) ) )
+    #adaboost1.load_params( "parames/adaboostclassifier_titanic.yml" )
+
     xgboost1 = XGBoostClassifier( model = xgb.XGBClassifier, train_type = "fit", use_valid = True, debug = args.debug )
     xgboost1.load_params( "parames/xgboost_classifier_titanic.yml" )
     xgboost2 = XGBoostClassifier( model = xgb.XGBClassifier, train_type = "fit", use_valid = True, debug = args.debug )
     xgboost2.load_params( "parames/xgboost_classifier_titanic2.yml" )
+
+    catboost1 = CatBoostClassifier( model = catboost.CatBoostClassifier(), train_type = "fit", use_valid = True, debug = args.debug )
+    #catboost1.load_params( "parames/catboost_classifier_titanic.yml" )
+
     dnn1 = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
-    dnn2 = KerasMLPClassifier( n_input_dim = 6, use_valid = True, debug = args.debug )
+    dnn2 = KerasMLPClassifier( n_input_dim = 8, use_valid = True, debug = args.debug )
 
     # アンサンブルモデル（２段）
     """
@@ -127,8 +142,8 @@ if __name__ == '__main__':
 
     # アンサンブルモデル（３段）
     model = StackingEnsembleClassifier(
-        classifiers  = [ knn1, logistic1, svc1, forest1, xgboost1, dnn1 ],
-        second_classifiers  = [ logistic2, xgboost2, dnn2 ],
+        classifiers  = [ knn1, logistic1, svc1, forest1, bagging1, adaboost1, xgboost1, dnn1 ],
+        second_classifiers  = [ logistic2, xgboost2, catboost1 ],
         final_classifiers = logistic3,
         n_splits = args.n_splits,
         seed = args.seed,

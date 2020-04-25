@@ -10,8 +10,10 @@ from sklearn.pipeline import _name_estimators
 from sklearn.base import clone
 from sklearn.preprocessing import StandardScaler
 
-# XGBoost
+# GDB
 import xgboost as xgb
+import lightgbm as lgb
+import catboost
 
 # Keras
 import keras
@@ -73,8 +75,10 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
 
         with open( file_path ) as f:
             self.params = yaml.safe_load(f)
-            self.model_params = self.params["model"]["model_params"]
-            self.train_params = self.params["model"]["train_params"]
+            if( "model_params" in self.params["model"] ):
+                self.model_params = self.params["model"]["model_params"]
+            if( "train_params" in self.params["model"] ):
+                self.train_params = self.params["model"]["train_params"]
 
         self.set_params(**self.model_params)
         return
@@ -166,6 +170,68 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
             # 推論処理
             # xgb.train() での retrun の XGBClassifier では predict_proba 使用不可
             predicts = self.model.predict(X_test_dmat)
+
+        return predicts
+
+
+class CatBoostClassifier( BaseEstimator, ClassifierMixin ):
+    def __init__( self, model, train_type = "fit", use_valid = False, debug = False ):
+        self.model = model
+        self.train_type = train_type
+        self.debug = debug
+        self.use_valid = use_valid
+        self.evals_results = []
+        return
+
+    def load_params( self, file_path ):
+        if( self.debug ):
+            print( "load parame file_path : ", file_path )
+
+        with open( file_path ) as f:
+            self.params = yaml.safe_load(f)
+            if( "model_params" in self.params["model"] ):
+                self.model_params = self.params["model"]["model_params"]
+            if( "train_params" in self.params["model"] ):
+                self.train_params = self.params["model"]["train_params"]
+
+        self.set_params(**self.model_params)
+        return
+
+    def get_params(self, deep=True):
+        return self.model.get_params(deep)
+
+    def set_params(self, **params):
+        self.model.set_params(**params)
+        return self
+
+    def get_eval_results( self ):
+        return self.evals_results
+
+    def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
+        if( self.train_type == "fit" ):
+            # 学習処理
+            self.model.fit(X_train, y_train)
+        else:
+            pass
+
+        return self
+        
+    def predict(self, X_test):
+        if( self.train_type == "fit" ):
+            # 推論処理
+            predicts = self.model.predict(X_test)
+        else:
+            pass
+
+        # ラベル値を argmax で 0 or 1 の離散値にする
+        #predicts = np.argmax(predicts, axis = 1)
+        return predicts
+
+    def predict_proba(self, X_test):
+        if( self.train_type == "fit" ):
+            predicts = self.model.predict_proba(X_test)
+        else:
+            pass
 
         return predicts
 

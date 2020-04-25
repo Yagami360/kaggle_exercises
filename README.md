@@ -5,25 +5,32 @@ Kaggle の練習用レポジトリ
 
 ### テーブルコンペ
 - 分類
-    - [Titanic: Machine Learning from Disaster](https://github.com/Yagami360/kaggle_exercises/tree/master/titanic)
+    - [[Getting Started] Titanic: Machine Learning from Disaster](https://github.com/Yagami360/kaggle_exercises/tree/master/titanic)
 - 回帰
-    - [House Prices: Advanced Regression Techniques](https://github.com/Yagami360/kaggle_exercises/tree/master/house-prices-advanced-regression-techniques)
-- Restaurant Revenue Prediction
-- Home Credit Default Risk
+    - [[Getting Started] House Prices: Advanced Regression Techniques](https://github.com/Yagami360/kaggle_exercises/tree/master/house-prices-advanced-regression-techniques)
+    - [Playground] Bike Sharing Demand
+
+- [Featured] Restaurant Revenue Prediction (電話番号の認証必要)
+- [Featured] Home Credit Default Risk (電話番号の認証必要)
+- [Featured] Mercari Price Suggestion Challenge (電話番号の認証必要)
+
+#### テーブルコンペ（時系列）
+
 
 ### 画像コンペ
 - 画像分類
-    - Digit Recognizer
-    - [Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
+    - [Getting Started] Digit Recognizer
+    - [[Playground] Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
 
 - セマンティクスセグメンテーション
-    - iMaterialist (Fashion) 2019 at FGVC6
+    - [] iMaterialist (Fashion) 2019 at FGVC6
+    - [] iMaterialist (Fashion) 2020 at FGVC6
 
 - 物体検出
+    - Facial Keypoints Detection
     - xxx
-    - - Facial Keypoints Detection
 
-- Deepfake Detection Challenge
+- [Featured] Deepfake Detection Challenge
 
 
 ### 自然言語コンペ
