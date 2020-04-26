@@ -146,6 +146,9 @@ if __name__ == '__main__':
         y_pred_test = model.predict(X_test)
         y_preds_test.append(y_pred_test)
 
+    # k-fold CV で平均化
+    y_preds_test = sum(y_preds_test) / len(y_preds_test)
+
     # 正解データとの平均2乗平方根誤差で評価
     if( args.target_norm ):
         rmse = np.sqrt( mean_squared_error( np.exp(y_train), np.exp(y_preds_train) ) ) 

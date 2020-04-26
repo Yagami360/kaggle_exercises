@@ -45,7 +45,7 @@ class SklearnClassifier( BaseEstimator, ClassifierMixin ):
         return self.model.get_params(deep)
 
     def set_params(self, **params):
-        self.model.set_params(params)
+        self.model.set_params(**params)
         return self
 
     def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
@@ -90,7 +90,6 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
         self.use_valid = use_valid
         self.evals_results = []
 
-        self.params_deep = self.get_params()
         self.model_params = self.model.get_params()
         self.train_params = {
             "num_boost_round": 5000,            # 試行回数
@@ -125,7 +124,7 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
     """
 
     def set_params(self, **params):
-        self.model.set_params(params)
+        self.model.set_params(**params)
         return self
 
     def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
@@ -265,7 +264,7 @@ class LightGBMClassifier( BaseEstimator, ClassifierMixin ):
         return self.model.get_params(deep)
 
     def set_params(self, **params):
-        self.model.set_params(params)
+        self.model.set_params(**params)
         return self
 
     def fit( self, X_train, y_train, X_valid = None, y_valid = None ):

@@ -139,7 +139,7 @@ if __name__ == '__main__':
         elif( args.classifier == "lightgbm" ):
             model = LightGBMClassifier( model = lgb.LGBMClassifier( objective='binary', metric='binary_logloss' ), train_type = args.train_type, use_valid = True, debug = args.debug )
         elif( args.classifier == "catboost" ):
-            model = CatBoostClassifier( model = catboost.CatBoostClassifier(), use_valid = True, debug = args.debug )
+            model = CatBoostClassifier( model = catboost.CatBoostClassifier( loss_function="Logloss" ), use_valid = True, debug = args.debug )
         elif( args.classifier == "mlp" ):
             model = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
 

@@ -25,21 +25,23 @@ from sklearn.ensemble import BaggingRegressor
 from sklearn.ensemble import AdaBoostRegressor
 import xgboost as xgb
 import lightgbm as lgb
-from catboost import CatBoostRegressor
+import catboost
 
 # 自作モジュール
 from preprocessing import preprocessing
+from models import SklearnRegressor, XGBoostRegressor, LightGBMRegressor, CatBoostRegressor
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="main_single_params", help="実験名")
+    parser.add_argument("--exper_name", default="single_model", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="bike-sharing-demand")
     parser.add_argument("--classifier", choices=["logistic", "knn", "svm", "random_forest", "bagging", "adaboost", "xgboost", "lightgbm", "catboost"], default="catboost", help="チューニングするモデル")
     parser.add_argument("--params_file", type=str, default="")
+    parser.add_argument('--train_type', choices=['train', 'fit'], default="fit", help="GDBTの学習タイプ")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument('--input_norm', action='store_true')
     parser.add_argument('--target_norm', action='store_true')
@@ -83,6 +85,10 @@ if __name__ == '__main__':
     # 前処理
     #================================
     df_train, df_test = preprocessing( args, df_train, df_test )
+
+    # 前処理後のデータセットを外部ファイルに保存
+    df_train.to_csv( os.path.join(args.results_dir, args.exper_name, "train_preprocessed.csv"), index=True)
+    df_test.to_csv( os.path.join(args.results_dir, args.exper_name, "test_preprocessed.csv"), index=True)
     if( args.debug ):
         print( "df_train.head() : \n", df_train.head() )
         print( "df_test.head() : \n", df_test.head() )
@@ -108,6 +114,7 @@ if __name__ == '__main__':
     kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
     y_preds_test = []
+    k = 0
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
         #--------------------
         # データセットの分割
@@ -119,23 +126,24 @@ if __name__ == '__main__':
         # モデルの定義
         #--------------------
         if( args.classifier == "logistic" ):
-            model = LogisticRegression( penalty='l2', solver="sag", random_state=args.seed )
+            model = SklearnRegressor( model = LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ), debug = args.debug )
         elif( args.classifier == "knn" ):
-            model = KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski' )
+            model = SklearnRegressor( model = KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski' ), debug = args.debug )
         elif( args.classifier == "svm" ):
-            model = SVR( kernel = 'rbf', gamma = 0.1, C = 10.0 )
+            model = SklearnRegressor( model = SVR( kernel = 'rbf', gamma = 0.1, C = 10.0 ), debug = args.debug )
         elif( args.classifier == "random_forest" ):
-            model = RandomForestRegressor( criterion = "mse", bootstrap = True, oob_score = True, n_estimators = 1000, n_jobs = -1, random_state = args.seed )
+            model = SklearnRegressor( model = RandomForestRegressor( criterion = "mse", bootstrap = True, oob_score = True, n_estimators = 1000, n_jobs = -1, random_state = args.seed ), debug = args.debug )
         elif( args.classifier == "bagging" ):
-            model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) )
+            model = SklearnRegressor( model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
         elif( args.classifier == "adaboost" ):
-            model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) )
+            model = SklearnRegressor( model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
         elif( args.classifier == "xgboost" ):
-            model = xgb.XGBRegressor( booster='gbtree', objective='reg:linear', eval_metric='rmse' )
+            model = XGBoostRegressor( model = xgb.XGBRegressor( booster='gbtree', objective='reg:linear', eval_metric='rmse', learning_rate = 0.01 ), train_type = args.train_type, use_valid = True, debug = args.debug )
+            model.load_params( "parames/xgboost_regressor_default.yml" )
         elif( args.classifier == "lightgbm" ):
-            model = lgb.LGBMRegressor()
+            model = LightGBMRegressor( model = lgb.LGBMRegressor( objective='regression', metric='rmse' ), train_type = args.train_type, use_valid = True, debug = args.debug )
         elif( args.classifier == "catboost" ):
-            model = CatBoostRegressor()
+            model = CatBoostRegressor( model = catboost.CatBoostRegressor(), use_valid = True, debug = args.debug )
 
         # モデルのパラメータ設定
         if not( args.params_file == "" ):
@@ -144,7 +152,7 @@ if __name__ == '__main__':
         #--------------------
         # モデルの学習処理
         #--------------------
-        model.fit(X_train_fold, y_train_fold)
+        model.fit(X_train_fold, y_train_fold, X_valid_fold, y_valid_fold )
 
         #--------------------
         # モデルの推論処理
@@ -153,6 +161,13 @@ if __name__ == '__main__':
         y_pred_test = model.predict(X_test)
         y_preds_test.append(y_pred_test)
     
+        #--------------------
+        # 可視化処理
+        #--------------------
+        # 損失関数
+        model.plot_loss( os.path.join(args.results_dir, args.exper_name, "losees_k{}.png".format(k) ) )
+        k += 1
+
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)
 
@@ -173,9 +188,14 @@ if __name__ == '__main__':
     #================================
     # 可視化処理
     #================================
+    # 重要特徴量
+    if( args.classifier in ["random_forest", "adaboost", "xgboost", "lightgbm", "catboost"] ):
+        model.plot_importance( os.path.join(args.results_dir, args.exper_name, "feature_importances.png") )
+
     # 回帰対象
-    sns.distplot(df_train['count'], label = "correct" )
-    sns.distplot(y_preds_train, label = "predict" )
+    _, axis = plt.subplots()
+    sns.distplot(df_train['count'], label = "correct", ax=axis )
+    sns.distplot(y_preds_train, label = "predict", ax=axis )
     plt.grid()
     plt.legend()
     plt.tight_layout()
