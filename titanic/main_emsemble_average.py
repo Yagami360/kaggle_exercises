@@ -130,7 +130,7 @@ if __name__ == '__main__':
         xgboost1 = XGBoostClassifier( model = xgb.XGBClassifier, train_type = "fit", use_valid = True, debug = args.debug )
         xgboost1.load_params( "parames/xgboost_classifier_titanic.yml" )
 
-        catboost1 = CatBoostClassifier( model = catboost.CatBoostClassifier(), train_type = "fit", use_valid = True, debug = args.debug )
+        catboost1 = CatBoostClassifier( model = catboost.CatBoostClassifier(), use_valid = True, debug = args.debug )
         #catboost1.load_params( "parames/catboost_classifier_titanic.yml" )
 
         dnn1 = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )

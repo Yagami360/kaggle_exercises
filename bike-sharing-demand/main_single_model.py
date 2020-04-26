@@ -13,7 +13,6 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
-from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import mean_squared_error
 
 # 機械学習モデル
@@ -39,7 +38,7 @@ if __name__ == '__main__':
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="bike-sharing-demand")
-    parser.add_argument("--classifier", choices=["logistic", "knn", "svm", "random_forest", "bagging", "adaboost", "xgboost", "lightgbm", "catboost"], default="logistic", help="チューニングするモデル")
+    parser.add_argument("--classifier", choices=["logistic", "knn", "svm", "random_forest", "bagging", "adaboost", "xgboost", "lightgbm", "catboost"], default="catboost", help="チューニングするモデル")
     parser.add_argument("--params_file", type=str, default="")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument('--input_norm', action='store_true')

@@ -6,7 +6,7 @@
             "booster": "gbtree",
             "objective": "binary:logistic",     # ２値分類用
             'eval_metric': 'logloss',           
-            "learning_rate" : 0.001,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
+            "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
             "n_estimators" : 1050,
             "max_depth": 6,                     # 3 ~ 9 : 一様分布に従う。1刻み
             "min_child_weight": 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う

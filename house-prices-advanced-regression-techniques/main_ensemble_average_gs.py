@@ -50,6 +50,8 @@ def objective_wrapper(args, X_train, y_train):
         #--------------------------------------------
         # k-fold CV での評価
         #--------------------------------------------
+        y_preds_train = np.zeros((len(y_train),))
+
         # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
         # StratifiedKFold は連続値では無効なので、通常の k-fold を使用
         kf = KFold(n_splits=args.n_splits_gs, shuffle=True, random_state=args.seed)

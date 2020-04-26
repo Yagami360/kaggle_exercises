@@ -4,13 +4,16 @@ import numpy as np
 import pandas as pd
 import random
 import warnings
+from matplotlib import pyplot as plt
+import seaborn as sns
 import json
 import yaml
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_squared_error
 
 # 機械学習モデル
 from sklearn.linear_model import LogisticRegression
@@ -149,9 +152,11 @@ def objective_wrapper(args, X_train, y_train):
         #--------------------------------------------
         # stratified k-fold CV での評価
         #--------------------------------------------
+        y_preds_train = np.zeros((len(y_train),))
+
         # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-        kf = StratifiedKFold(n_splits=args.n_splits_gs, shuffle=True, random_state=args.seed)
-        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
+        kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
             #--------------------
             # データセットの分割
             #--------------------
@@ -191,10 +196,14 @@ def objective_wrapper(args, X_train, y_train):
             #--------------------
             # モデルの推論処理
             #--------------------
-            y_pred_train[valid_index] = model.predict(X_valid_fold)
+            y_preds_train[valid_index] = model.predict(X_valid_fold)
         
-        accuracy = (y_train == y_pred_train).sum()/len(y_pred_train)
-        return accuracy
+        if( args.target_norm ):
+            rmse = np.sqrt( mean_squared_error( np.exp(y_train), np.exp(y_preds_train) ) ) 
+        else:
+            rmse = np.sqrt( mean_squared_error(y_train, y_preds_train) )
+
+        return rmse
 
     return objective
 
@@ -209,7 +218,8 @@ if __name__ == '__main__':
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument("--n_splits_gs", type=int, default=2, help="ハイパーパラメーターチューニング時の CV での学習用データセットの分割数")
     parser.add_argument("--n_trials", type=int, default=10, help="Optuna での試行回数")
-    parser.add_argument('--disable_input_norm', action='store_false')
+    parser.add_argument('--input_norm', action='store_true')
+    parser.add_argument('--target_norm', action='store_true')
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
@@ -256,11 +266,11 @@ if __name__ == '__main__':
     X_train = df_train.drop('count', axis = 1)
     X_test = df_test
     y_train = df_train['count']
-    y_pred_train = np.zeros((len(y_train),))
+    y_preds_train = np.zeros((len(y_train),))
     if( args.debug ):
         print( "len(X_train) : ", len(X_train) )
         print( "len(y_train) : ", len(y_train) )
-        print( "len(y_pred_train) : ", len(y_pred_train) )
+        print( "len(y_preds_train) : ", len(y_preds_train) )
 
     #==============================
     # Optuna によるハイパーパラメーターのチューニング
@@ -289,10 +299,10 @@ if __name__ == '__main__':
     # 最良モデルでの学習 & 推論
     #================================    
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-    kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+    kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
     y_preds_test = []
-    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
         #--------------------
         # データセットの分割
         #--------------------
@@ -332,19 +342,31 @@ if __name__ == '__main__':
         #--------------------
         # モデルの推論処理
         #--------------------
+        y_preds_train[valid_index] = model.predict(X_valid_fold)
         y_pred_test = model.predict(X_test)
         y_preds_test.append(y_pred_test)
-        #print( "[{}] len(y_pred_test) : {}".format(fold_id, len(y_pred_test)) )
-
-        y_pred_train[valid_index] = model.predict(X_valid_fold)
-        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_train)) )
     
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)
 
-    # accuracy
-    accuracy = (y_train == y_pred_train).sum()/len(y_pred_train)
-    print( "accuracy [k-fold CV train-valid] : {:0.5f}".format(accuracy) )
+    # 正解データとの平均2乗平方根誤差で評価
+    if( args.target_norm ):
+        rmse = np.sqrt( mean_squared_error( np.exp(y_train), np.exp(y_preds_train) ) ) 
+    else:
+        rmse = np.sqrt( mean_squared_error(y_train, y_preds_train) )
+
+    print( "RMSE [k-fold CV train-valid] : {:0.5f}".format(rmse) )
+
+    #================================
+    # 可視化処理
+    #================================
+    # 回帰対象
+    sns.distplot(df_train['count'], label = "correct" )
+    sns.distplot(y_preds_train, label = "predict" )
+    plt.grid()
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "count.png"), dpi = 200, bbox_inches = 'tight' )
 
     #================================
     # Kaggle API での submit

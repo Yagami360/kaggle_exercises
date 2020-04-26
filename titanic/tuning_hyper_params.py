@@ -148,6 +148,8 @@ def objective_wrapper(args, X_train, y_train):
         #--------------------------------------------
         # stratified k-fold CV での評価
         #--------------------------------------------
+        y_preds_train = np.zeros((len(y_train),))
+        
         # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
         kf = StratifiedKFold(n_splits=args.n_splits_gs, shuffle=True, random_state=args.seed)
         for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
@@ -212,6 +214,11 @@ if __name__ == '__main__':
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
+
+    # 実験名を自動的に変更
+    if( args.exper_name == "tuning_hyper_params" ):
+        args.exper_name = args.exper_name + "_" + args.classifier
+
     if( args.debug ):
         for key, value in vars(args).items():
             print('%s: %s' % (str(key), str(value)))
@@ -330,12 +337,9 @@ if __name__ == '__main__':
         #--------------------
         # モデルの推論処理
         #--------------------
+        y_pred_train[valid_index] = model.predict(X_valid_fold)
         y_pred_test = model.predict(X_test)
         y_preds_test.append(y_pred_test)
-        #print( "[{}] len(y_pred_test) : {}".format(fold_id, len(y_pred_test)) )
-
-        y_pred_train[valid_index] = model.predict(X_valid_fold)
-        #print( "[{}] len(y_pred_fold) : {}".format(fold_id, len(y_pred_train)) )
     
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)

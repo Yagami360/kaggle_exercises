@@ -122,6 +122,7 @@ class XGBoostRegressor( BaseEstimator, RegressorMixin ):
                     evals_result = evals_result,
                     verbose_eval = self.train_params["num_boost_round"] // 50,
                 )
+                self.evals_results.append(evals_result)
             else:
                 self.model = xgb.train(
                     self.model_params, X_train_dmat, 
