@@ -12,7 +12,7 @@ from sklearn.pipeline import _name_estimators
 from sklearn.base import clone
 from sklearn.preprocessing import StandardScaler
 
-# GDB
+# GDBT
 import xgboost as xgb
 import lightgbm as lgb
 import catboost
@@ -90,7 +90,8 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
         self.use_valid = use_valid
         self.evals_results = []
 
-        self.model_params = model.get_params()
+        self.params_deep = self.get_params()
+        self.model_params = self.model.get_params()
         self.train_params = {
             "num_boost_round": 5000,            # 試行回数
             "early_stopping_rounds": 1000,      # early stopping を行う繰り返し回数
@@ -101,9 +102,6 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
         return
 
     def load_params( self, file_path ):
-        if( self.debug ):
-            print( "load parame file_path : ", file_path )
-
         with open( file_path ) as f:
             self.params = yaml.safe_load(f)
             if( "model_params" in self.params["model"] ):
@@ -111,7 +109,14 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
             if( "train_params" in self.params["model"] ):
                 self.train_params = self.params["model"]["train_params"]
 
-        self.set_params(**self.model_params)
+        if( self.debug ):
+            print( "load parame file_path : ", file_path )
+            print( "model_params :\n", self.model_params )
+
+        #self.set_params(**self.model_params)
+        if( self.train_type == "fit" ):
+            self.model = xgb.XGBClassifier( **self.model_params )
+
         return
 
     """
@@ -192,7 +197,7 @@ class XGBoostClassifier( BaseEstimator, ClassifierMixin ):
 
         return predicts
 
-    def plot_importance(self, save_path):
+    def plot_importance(self, save_path ):
         _, ax = plt.subplots(figsize=(8, 4))
         xgb.plot_importance(
             self.model,
@@ -268,7 +273,7 @@ class LightGBMClassifier( BaseEstimator, ClassifierMixin ):
             # 学習処理
             self.model.fit(X_train, y_train)
         else:
-            # XGBoost 用データセットに変換
+            # LightGBM 用データセットに変換
             X_train_lgb = lgb.Dataset(X_train, label=y_train)
             if( self.use_valid ):
                 X_valid_lgb = lgb.Dataset(X_valid, label=y_valid)
@@ -436,8 +441,8 @@ class CatBoostClassifier( BaseEstimator, ClassifierMixin ):
             axis = fig.add_subplot(111)
 
             evals_result = self.model.get_evals_result()
-            axis.plot(evals_result['learn']['Logloss'], label='train')
-            axis.plot(evals_result['validation']['Logloss'], label='valid')
+            axis.plot(evals_result['learn'][self.model_params["loss_function"]], label='train')
+            axis.plot(evals_result['validation'][self.model_params["loss_function"]], label='valid')
 
             plt.xlabel('iters')
             plt.ylabel("Logloss")

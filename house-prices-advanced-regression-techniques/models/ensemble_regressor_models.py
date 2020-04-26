@@ -8,7 +8,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator              
 from sklearn.base import RegressorMixin
 from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import KFold
 from sklearn.pipeline import _name_estimators
 from sklearn.base import clone
 
@@ -36,7 +36,6 @@ class WeightAverageEnsembleRegressor( BaseEstimator, RegressorMixin ):
                 各回帰器の対する学習を行うかのフラグのリスト
         """
         self.regressors = regressors
-        self.fitting = fitting
         self.fitted_regressors = regressors
         self.weights = weights
         self.clone = clone
@@ -56,28 +55,17 @@ class WeightAverageEnsembleRegressor( BaseEstimator, RegressorMixin ):
             for i, named_classifier in enumerate(self.named_regressors):
                 print( "name {} : {}".format(i, self.named_regressors[named_classifier]) )
 
-        if regressors != None and fitting == None:
-            fitting = []
-            for i in range(len(self.regressors)):
-                fitting.append(True)
-
         return
 
     def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
         # self.regressors に設定されている分類器のクローン clone(reg) で fitting
         self.fitted_regressors = []
         for i, reg in enumerate( tqdm(self.regressors, desc = "fitting regressors") ):
-            if( self.fitting[i] ):
-                # clone() : 同じパラメータの 推定器を deep copy
-                if( self.clone ):
-                    fitted_reg = clone(reg).fit( X_train, y_train, X_valid, y_valid )
-                else:
-                    fitted_reg = reg.fit( X_train, y_train, X_valid, y_valid )
+            # clone() : 同じパラメータの 推定器を deep copy
+            if( self.clone ):
+                fitted_reg = clone(reg).fit( X_train, y_train, X_valid, y_valid )
             else:
-                if( self.clone ):
-                    fitted_reg = clone(reg)
-                else:
-                    fitted_reg = reg
+                fitted_reg = reg.fit( X_train, y_train, X_valid, y_valid )
 
             self.fitted_regressors.append( fitted_reg )
 
@@ -127,12 +115,12 @@ class StackingEnsembleRegressor( BaseEstimator, RegressorMixin ):
         #--------------------------------
         # １段目の k-fold CV での学習 & 推論
         #--------------------------------
-        kf = StratifiedKFold( n_splits=self.n_splits, shuffle=True, random_state=self.seed )
+        kf = KFold(n_splits=self.n_splits, shuffle=True, random_state=self.seed)
         y_preds_train = np.zeros( (self.n_classifier, len(y_train)) )
         y_preds_test = np.zeros( (self.n_classifier, self.n_splits, len(X_test)) )
 
         k = 0
-        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
+        for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
             #--------------------
             # データセットの分割
             #--------------------

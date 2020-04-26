@@ -87,7 +87,6 @@ def objective_wrapper(args, X_train, y_train):
             ensemble = WeightAverageEnsembleRegressor(
                 regressors  = [ knn, svr, random_forest, xgboost ],
                 weights = [ params["weights1"], params["weights2"], params["weights3"], params["weights4"] ],
-                fitting = [ True, True, True, True ],
             )
 
             #--------------------
@@ -236,7 +235,6 @@ if __name__ == '__main__':
         ensemble = WeightAverageEnsembleRegressor(
             regressors  = [ knn, svr, random_forest, xgboost ],
             weights = [study.best_params["weights1"], study.best_params["weights2"], study.best_params["weights3"], study.best_params["weights4"] ],
-            fitting = [ True, True, True, True ],
         )
 
         #--------------------

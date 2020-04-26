@@ -175,9 +175,9 @@ def objective_wrapper(args, X_train, y_train):
             elif( args.classifier == "random_forest" ):
                 model = RandomForestRegressor()
             elif( args.classifier == "bagging" ):
-                model = BaggingRegressor( DecisionTreeRegressor(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
+                model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) )
             elif( args.classifier == "adaboost" ):
-                model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
+                model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) )
             elif( args.classifier == "xgboost" ):
                 model = xgb.XGBRegressor()
             elif( args.classifier == "lightgbm" ):
@@ -321,9 +321,9 @@ if __name__ == '__main__':
         elif( args.classifier == "random_forest" ):
             model = RandomForestRegressor()
         elif( args.classifier == "bagging" ):
-            model = BaggingRegressor( DecisionTreeRegressor(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
+            model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) )
         elif( args.classifier == "adaboost" ):
-            model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
+            model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) )
         elif( args.classifier == "xgboost" ):
             model = xgb.XGBRegressor()
         elif( args.classifier == "lightgbm" ):

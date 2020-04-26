@@ -47,6 +47,11 @@ if __name__ == '__main__':
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
+
+    # 実験名を自動的に変更
+    if( args.exper_name == "single_model" ):
+        args.exper_name = args.exper_name + "_" + args.classifier
+        
     if( args.debug ):
         for key, value in vars(args).items():
             print('%s: %s' % (str(key), str(value)))
@@ -120,11 +125,11 @@ if __name__ == '__main__':
         elif( args.classifier == "svm" ):
             model = SVR( kernel = 'rbf', gamma = 0.1, C = 10.0 )
         elif( args.classifier == "random_forest" ):
-            model = RandomForestRegressor( criterion = "gini", bootstrap = True, oob_score = True, n_estimators = 1000, n_jobs = -1, random_state = args.seed )
+            model = RandomForestRegressor( criterion = "mse", bootstrap = True, oob_score = True, n_estimators = 1000, n_jobs = -1, random_state = args.seed )
         elif( args.classifier == "bagging" ):
-            model = BaggingRegressor( DecisionTreeRegressor(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
+            model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) )
         elif( args.classifier == "adaboost" ):
-            model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'entropy', max_depth = None, random_state = args.seed ) )
+            model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) )
         elif( args.classifier == "xgboost" ):
             model = xgb.XGBRegressor( booster='gbtree', objective='reg:linear', eval_metric='rmse' )
         elif( args.classifier == "lightgbm" ):

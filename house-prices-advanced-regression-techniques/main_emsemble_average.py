@@ -29,11 +29,11 @@ import catboost
 # 自作モジュール
 from preprocessing import preprocessing
 from models import SklearnRegressor, XGBoostRegressor, LightGBMRegressor, CatBoostRegressor
-from models import StackingEnsembleRegressor
+from models import WeightAverageEnsembleRegressor
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="ensemble_stacking", help="実験名")
+    parser.add_argument("--exper_name", default="ensemble_average", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
@@ -100,64 +100,51 @@ if __name__ == '__main__':
     #===========================================
     # モデルの学習 & 推論処理
     #===========================================
-    #--------------------
-    # モデル定義
-    #--------------------
-    logistic1 = SklearnRegressor( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
-    logistic2 = SklearnRegressor( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
-    logistic3 = SklearnRegressor( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
-    knn1 = SklearnRegressor( KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski', n_jobs = -1 ) )
-    svm1 = SklearnRegressor( SVR( kernel = 'rbf', gamma = 0.1, C = 10.0 ) )
-    forest1 = SklearnRegressor( RandomForestRegressor( criterion = "mse", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) )
-    bagging1 = SklearnRegressor( model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
-    adaboost1 = SklearnRegressor( model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
+    # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
+    # StratifiedKFold は連続値では無効なので、通常の k-fold を使用
+    kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
-    xgboost1 = XGBoostRegressor( model = xgb.XGBRegressor( booster='gbtree', objective='reg:linear', eval_metric='rmse', learning_rate = 0.01 ), train_type = args.train_type, use_valid = True, debug = args.debug )
-    #xgboost1.load_params( "parames/xgboost_regressor_default.yml" )
-    xgboost2 = XGBoostRegressor( model = xgb.XGBRegressor( booster='gbtree', objective='reg:linear', eval_metric='rmse', learning_rate = 0.01 ), train_type = args.train_type, use_valid = True, debug = args.debug )
-    #xgboost2.load_params( "parames/xgboost_regressor_default.yml" )
+    y_preds_test = []
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        #--------------------
+        # データセットの分割
+        #--------------------
+        X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+        y_train_fold, y_valid_fold = y_train.iloc[train_index], y_train.iloc[valid_index]
 
-    lightbgm1 = LightGBMRegressor( model = lgb.LGBMRegressor( objective='regression', metric='rmse' ), train_type = args.train_type, use_valid = True, debug = args.debug )
-    catboost1 = CatBoostRegressor( model = catboost.CatBoostRegressor(), use_valid = True, debug = args.debug )
+        #--------------------
+        # モデル定義
+        #--------------------
+        logistic1 = SklearnRegressor( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
+        knn1 = SklearnRegressor( KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski', n_jobs = -1 ) )
+        svm1 = SklearnRegressor( SVR( kernel = 'rbf', gamma = 0.1, C = 10.0 ) )
+        forest1 = SklearnRegressor( RandomForestRegressor( criterion = "mse", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) )
+        bagging1 = SklearnRegressor( model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
+        adaboost1 = SklearnRegressor( model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
 
-    # アンサンブルモデル（２段）
-    """
-    model = StackingEnsembleRegressor(
-        regressors  = [ knn1, logistic1, svm1, forest1, xgboost1, dnn1 ],
-        final_regressors = logistic2,
-        n_splits = args.n_splits,
-        seed = args.seed,
-    )
-    """
-    """
-    # アンサンブルモデル（３段）
-    model = StackingEnsembleRegressor(
-        regressors  = [ knn1, logistic1, svm1, forest1, xgboost1 ],
-        second_regressors  = [ logistic2, xgboost2 ],
-        final_regressors = logistic3,
-        n_splits = args.n_splits,
-        seed = args.seed,
-    )
-    """
-    # アンサンブルモデル（３段）
-    model = StackingEnsembleRegressor(
-        regressors = [ knn1, logistic1, svm1, forest1, bagging1, adaboost1, xgboost1 ],
-        second_regressors = [ logistic2, lightbgm1, catboost1 ],
-        final_regressors = logistic3,
-        n_splits = args.n_splits,
-        seed = args.seed,
-    )
+        xgboost1 = XGBoostRegressor( model = xgb.XGBRegressor( booster='gbtree', objective='reg:linear', eval_metric='rmse', learning_rate = 0.01 ), train_type = args.train_type, use_valid = True, debug = args.debug )
+        #xgboost1.load_params( "parames/xgboost_regressor_default.yml" )
 
-    #--------------------
-    # モデルの学習処理
-    #--------------------
-    model.fit(X_train, y_train, X_test)
+        lightbgm1 = LightGBMRegressor( model = lgb.LGBMRegressor( objective='regression', metric='rmse' ), train_type = args.train_type, use_valid = True, debug = args.debug )
+        catboost1 = CatBoostRegressor( model = catboost.CatBoostRegressor(), use_valid = True, debug = args.debug )
 
-    #--------------------
-    # モデルの推論処理
-    #--------------------
-    y_preds_train = model.y_preds_train
-    y_preds_test = model.y_preds_test
+        # アンサンブルモデル
+        model = WeightAverageEnsembleRegressor(
+            regressors  = [ logistic1, knn1, svm1, forest1, bagging1, adaboost1, xgboost1, lightbgm1, catboost1 ],
+            weights = [ 0.01, 0.01, 0.01, 0.05, 0.15, 0.10, 0.10, 0.15, 0.50 ],
+        )
+
+        #--------------------
+        # モデルの学習処理
+        #--------------------
+        model.fit(X_train_fold, y_train_fold, X_valid_fold, y_valid_fold )
+
+        #--------------------
+        # モデルの推論処理
+        #--------------------
+        y_preds_train[valid_index] = model.predict(X_valid_fold)
+        y_pred_test = model.predict(X_test)
+        y_preds_test.append(y_pred_test)
 
     # 正解データとの平均2乗平方根誤差で評価
     if( args.target_norm ):
@@ -178,19 +165,6 @@ if __name__ == '__main__':
     else:
         plt.savefig( os.path.join(args.results_dir, args.exper_name, "SalePrice_wo_norm.png"), dpi = 300, bbox_inches = 'tight' )
     
-    #------------------
-    # 重要特徴量
-    #------------------
-    _, ax = plt.subplots(figsize=(8, 16))
-    xgb.plot_importance(
-        xgboost1.model,
-        ax = ax,
-        importance_type = 'gain',
-        show_values = False
-    )
-    plt.tight_layout()
-    plt.savefig( os.path.join(args.results_dir, args.exper_name, "feature_importances.png"), dpi = 300, bbox_inches = 'tight' )
-
     #================================
     # Kaggle API での submit
     #================================
@@ -201,7 +175,7 @@ if __name__ == '__main__':
         df_submission['SalePrice'] = list(map(int, y_preds_test))
 
     df_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
-    
+
     if( args.submit ):
         # Kaggle-API で submit
         api = KaggleApi()

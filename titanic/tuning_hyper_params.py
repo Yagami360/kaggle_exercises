@@ -22,13 +22,14 @@ from sklearn.ensemble import BaggingClassifier
 from sklearn.ensemble import AdaBoostClassifier
 import xgboost as xgb
 import lightgbm as lgb
-from catboost import CatBoostClassifier
+import catboost
 
 # Optuna
 import optuna
 
 # 自作モジュール
 from preprocessing import preprocessing
+from models import SklearnClassifier, XGBoostClassifier, LightGBMClassifier, CatBoostClassifier, KerasMLPClassifier
 
 
 def objective_wrapper(args, X_train, y_train):
@@ -179,7 +180,7 @@ def objective_wrapper(args, X_train, y_train):
             elif( args.classifier == "lightgbm" ):
                 model = lgb.LGBMClassifier()
             elif( args.classifier == "catboost" ):
-                model = CatBoostClassifier()
+                model = catboost.CatBoostClassifier()
 
             # モデルのチューニングパラメータ設定
             model.set_params( **params )
@@ -324,7 +325,7 @@ if __name__ == '__main__':
         elif( args.classifier == "lightgbm" ):
             model = lgb.LGBMRegressor()
         elif( args.classifier == "catboost" ):
-            model = CatBoostClassifier()
+            model = catboost.CatBoostClassifier()
 
         # モデルのパラメータ設定
         model.set_params( **study.best_params )
