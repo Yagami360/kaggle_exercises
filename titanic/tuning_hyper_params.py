@@ -136,7 +136,7 @@ def objective_wrapper(args, X_train, y_train):
         elif( args.classifier == "catboost" ):
             params = {
                 'eval_metric': trial.suggest_categorical('eval_metric', ['Accuracy']),
-                'iterations' : trial.suggest_int('iterations', 500, 500),                             # まず大きな数を設定しておく
+                'iterations' : trial.suggest_int('iterations', 1000, 1000),                             # まず大きな数を設定しておく
                 'learning_rate' : trial.suggest_loguniform('learning_rate', 0.01, 0.01),               
                 'depth' : trial.suggest_int('depth', 4, 10),                                       
                 'random_strength' :trial.suggest_int('random_strength', 0, 100),                       

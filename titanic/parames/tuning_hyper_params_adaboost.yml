@@ -1,0 +1,13 @@
+{
+    "model": {
+        "name": "adaboost",
+        "model_params": {
+            "n_estimators": 1000,
+            "learning_rate": 0.01,
+            "base_estimator__random_state": 4,
+            "base_estimator__max_features": 0.4293349692576683,
+            "base_estimator__min_samples_leaf": 4,
+            "base_estimator__min_samples_split": 8
+        }
+    }
+}

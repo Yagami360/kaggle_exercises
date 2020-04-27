@@ -43,7 +43,7 @@ def objective_wrapper(args, X_train, y_train):
         #--------------------------------------------
         # ベイズ最適化でのチューニングパイパーパラメーター
         #--------------------------------------------
-        if( args.classifier == "logistic" ):
+        if( args.regressor == "logistic" ):
             params = {
                 'penalty': trial.suggest_categorical('penalty', ['l2']),
                 "solver" : trial.suggest_categorical("solver", ['sag']), 
@@ -51,21 +51,21 @@ def objective_wrapper(args, X_train, y_train):
                 'random_state': trial.suggest_int("random_state", 71, 71),
                 'n_jobs': trial.suggest_int("n_jobs", -1, -1),
             }
-        elif( args.classifier == "knn" ):
+        elif( args.regressor == "knn" ):
             params = {
                 "metric" : trial.suggest_categorical("metric", ['minkowski']), 
                 "p" : trial.suggest_int("p", 1, 2),
                 'n_neighbors': trial.suggest_int("n_neighbors", 1, 50),
                 'n_jobs': trial.suggest_int("n_jobs", -1, -1),
             }
-        elif( args.classifier == "svm" ):
+        elif( args.regressor == "svm" ):
             params = {
                 "kernel" : trial.suggest_categorical("kernel", ['rbf']), 
                 'C': trial.suggest_loguniform('C', 0.1, 1000.0),
                 'gamma': trial.suggest_loguniform('gamma', 1e-8, 10.0),
                 'random_state': trial.suggest_int("random_state", 71, 71),
             }
-        elif( args.classifier == "random_forest" ):
+        elif( args.regressor == "random_forest" ):
             params = {
                 "oob_score" : trial.suggest_int("oob_score", 0, 1),                         # Whether to use out-of-bag samples to estimate the generalization accuracy.(default=False)
                 "n_estimators" : trial.suggest_int("n_estimators", 1000, 1000),             # チューニングは固定
@@ -78,7 +78,7 @@ def objective_wrapper(args, X_train, y_train):
                 'random_state': trial.suggest_int("random_state", 71, 71),
                 'n_jobs': trial.suggest_int("n_jobs", -1, -1),
             }
-        elif( args.classifier == "bagging" ):
+        elif( args.regressor == "bagging" ):
             params = {
                 "n_estimators" : trial.suggest_int("n_estimators", 1000, 1000),             # チューニングは固定
                 'max_samples': trial.suggest_float('max_samples', 0.0, 1.0),                # base_estimator に設定した弱識別器の内, 使用するサンプルの割合
@@ -94,7 +94,7 @@ def objective_wrapper(args, X_train, y_train):
                 'base_estimator__min_samples_split': trial.suggest_int('base_estimator__min_samples_split', 2, 10),
                 'base_estimator__random_state': trial.suggest_int("base_estimator__random_state", 71, 71),
             }
-        elif( args.classifier == "adaboost" ):
+        elif( args.regressor == "adaboost" ):
             params = {
                 "n_estimators" : trial.suggest_int("n_estimators", 1000, 1000),             # チューニングは固定
                 "learning_rate" : trial.suggest_loguniform("learning_rate", 0.01, 0.01),    # ハイパーパラメーターのチューニング時は固定  
@@ -106,7 +106,7 @@ def objective_wrapper(args, X_train, y_train):
                 'base_estimator__min_samples_split': trial.suggest_int('base_estimator__min_samples_split', 2, 10),
                 'base_estimator__random_state': trial.suggest_int("base_estimator__random_state", 71, 71),
             }
-        elif( args.classifier == "xgboost" ):
+        elif( args.regressor == "xgboost" ):
             params = {
                 'booster': trial.suggest_categorical('booster', ['gbtree']),
                 'objective': trial.suggest_categorical('objective', ['reg:linear']),
@@ -121,7 +121,7 @@ def objective_wrapper(args, X_train, y_train):
                 'reg_lambda': trial.suggest_float("reg_lambda", 1.0, 1.0),                                    # デフォルト値としておく。余裕があれば変更
                 'random_state': trial.suggest_int("random_state", 71, 71),
             }
-        elif( args.classifier == "lightgbm" ):
+        elif( args.regressor == "lightgbm" ):
             params = {
                 'boosting_type': trial.suggest_categorical('boosting', ['gbdt', 'dart', 'goss']),
                 'objective': 'regression',
@@ -136,7 +136,7 @@ def objective_wrapper(args, X_train, y_train):
                 'device': trial.suggest_categorical('boosting', ['cpu']),
                 'verbose' : 0,
             }
-        elif( args.classifier == "catboost" ):
+        elif( args.regressor == "catboost" ):
             params = {
 #                'loss_function': trial.suggest_categorical('loss_function', ['RMSE']),
 #                'eval_metric': trial.suggest_categorical('eval_metric', ['Logloss']),
@@ -167,24 +167,24 @@ def objective_wrapper(args, X_train, y_train):
             #--------------------
             # モデルの定義
             #--------------------
-            if( args.classifier == "logistic" ):
+            if( args.regressor == "logistic" ):
                 model = SklearnRegressor( model = LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ), debug = args.debug )
-            elif( args.classifier == "knn" ):
+            elif( args.regressor == "knn" ):
                 model = SklearnRegressor( model = KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski' ), debug = args.debug )
-            elif( args.classifier == "svm" ):
+            elif( args.regressor == "svm" ):
                 model = SklearnRegressor( model = SVR( kernel = 'rbf', gamma = 0.1, C = 10.0 ), debug = args.debug )
-            elif( args.classifier == "random_forest" ):
+            elif( args.regressor == "random_forest" ):
                 model = SklearnRegressor( model = RandomForestRegressor( criterion = "mse", bootstrap = True, oob_score = True, n_estimators = 1000, n_jobs = -1, random_state = args.seed ), debug = args.debug )
-            elif( args.classifier == "bagging" ):
+            elif( args.regressor == "bagging" ):
                 model = SklearnRegressor( model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
-            elif( args.classifier == "adaboost" ):
+            elif( args.regressor == "adaboost" ):
                 model = SklearnRegressor( model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
-            elif( args.classifier == "xgboost" ):
+            elif( args.regressor == "xgboost" ):
                 model = XGBoostRegressor( model = xgb.XGBRegressor( booster='gbtree', objective='reg:linear', eval_metric='rmse', learning_rate = 0.01 ), train_type = args.train_type, use_valid = True, debug = args.debug )
                 model.load_params( "parames/xgboost_regressor_default.yml" )
-            elif( args.classifier == "lightgbm" ):
+            elif( args.regressor == "lightgbm" ):
                 model = LightGBMRegressor( model = lgb.LGBMRegressor( objective='regression', metric='rmse' ), train_type = args.train_type, use_valid = True, debug = args.debug )
-            elif( args.classifier == "catboost" ):
+            elif( args.regressor == "catboost" ):
                 model = CatBoostRegressor( model = catboost.CatBoostRegressor(), use_valid = True, debug = args.debug )
 
             # モデルのチューニングパラメータ設定
@@ -216,17 +216,22 @@ if __name__ == '__main__':
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="bike-sharing-demand")
-    parser.add_argument("--classifier", choices=["logistic", "knn", "svm", "random_forest", "bagging", "adaboost", "xgboost", "lightgbm", "catboost"], default="catboost", help="チューニングするモデル")
+    parser.add_argument("--regressor", choices=["logistic", "knn", "svm", "random_forest", "bagging", "adaboost", "xgboost", "lightgbm", "catboost"], default="catboost", help="チューニングするモデル")
     parser.add_argument('--train_type', choices=['train', 'fit'], default="fit", help="GDBTの学習タイプ")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument("--n_splits_gs", type=int, default=2, help="ハイパーパラメーターチューニング時の CV での学習用データセットの分割数")
     parser.add_argument("--n_trials", type=int, default=10, help="Optuna での試行回数")
     parser.add_argument('--input_norm', action='store_true')
-    parser.add_argument('--target_norm', action='store_true')
+    parser.add_argument('--target_norm', action='store_false')
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
+
+    # 実験名を自動的に変更
+    if( args.exper_name == "tuning_hyper_params" ):
+        args.exper_name = args.exper_name + "_" + args.regressor
+
     if( args.debug ):
         for key, value in vars(args).items():
             print('%s: %s' % (str(key), str(value)))
@@ -291,7 +296,7 @@ if __name__ == '__main__':
     with open( os.path.join( args.results_dir, args.exper_name, args.exper_name + ".yml"), 'w') as f:
         param = { 
             "model": {
-                "name" : args.classifier,
+                "name" : args.regressor,
                 "model_params": study.best_params,
             },
         }
@@ -315,24 +320,24 @@ if __name__ == '__main__':
         #--------------------
         # モデルの定義
         #--------------------
-        if( args.classifier == "logistic" ):
+        if( args.regressor == "logistic" ):
             model = SklearnRegressor( model = LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ), debug = args.debug )
-        elif( args.classifier == "knn" ):
+        elif( args.regressor == "knn" ):
             model = SklearnRegressor( model = KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski' ), debug = args.debug )
-        elif( args.classifier == "svm" ):
+        elif( args.regressor == "svm" ):
             model = SklearnRegressor( model = SVR( kernel = 'rbf', gamma = 0.1, C = 10.0 ), debug = args.debug )
-        elif( args.classifier == "random_forest" ):
+        elif( args.regressor == "random_forest" ):
             model = SklearnRegressor( model = RandomForestRegressor( criterion = "mse", bootstrap = True, oob_score = True, n_estimators = 1000, n_jobs = -1, random_state = args.seed ), debug = args.debug )
-        elif( args.classifier == "bagging" ):
+        elif( args.regressor == "bagging" ):
             model = SklearnRegressor( model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
-        elif( args.classifier == "adaboost" ):
+        elif( args.regressor == "adaboost" ):
             model = SklearnRegressor( model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
-        elif( args.classifier == "xgboost" ):
+        elif( args.regressor == "xgboost" ):
             model = XGBoostRegressor( model = xgb.XGBRegressor( booster='gbtree', objective='reg:linear', eval_metric='rmse', learning_rate = 0.01 ), train_type = args.train_type, use_valid = True, debug = args.debug )
             model.load_params( "parames/xgboost_regressor_default.yml" )
-        elif( args.classifier == "lightgbm" ):
+        elif( args.regressor == "lightgbm" ):
             model = LightGBMRegressor( model = lgb.LGBMRegressor( objective='regression', metric='rmse' ), train_type = args.train_type, use_valid = True, debug = args.debug )
-        elif( args.classifier == "catboost" ):
+        elif( args.regressor == "catboost" ):
             model = CatBoostRegressor( model = catboost.CatBoostRegressor(), use_valid = True, debug = args.debug )
 
         # モデルのパラメータ設定
@@ -365,7 +370,7 @@ if __name__ == '__main__':
     # 可視化処理
     #================================
     # 重要特徴量
-    if( args.classifier in ["random_forest", "adaboost", "xgboost", "lightgbm", "catboost"] ):
+    if( args.regressor in ["random_forest", "adaboost", "xgboost", "lightgbm", "catboost"] ):
         model.plot_importance( os.path.join(args.results_dir, args.exper_name, "feature_importances.png") )
         
     # 回帰対象

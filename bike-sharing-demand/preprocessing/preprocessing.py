@@ -11,10 +11,25 @@ def preprocessing( args, df_train, df_test ):
     # 全データセット
     df_data = pd.concat([df_train, df_test], sort=False)
 
+    # 時系列データを処理
+    df_train['year'] = [t.year for t in pd.DatetimeIndex(df_train.datetime)]
+    df_train['year'] = df_train['year'].map( {2011:0, 2012:1} )
+    df_train["month"] = [t.month for t in pd.DatetimeIndex(df_train.datetime)]
+    df_train["day"] = [t.dayofweek for t in pd.DatetimeIndex(df_train.datetime)]
+    df_train["hour"] = [t.hour for t in pd.DatetimeIndex(df_train.datetime)]
+    df_train["weekday"] = [t for t in pd.DatetimeIndex(df_train.datetime).weekday]
+
+    df_test['year'] = [t.year for t in pd.DatetimeIndex(df_test.datetime)]
+    df_test['year'] = df_test['year'].map( {2011:0, 2012:1} )
+    df_test["month"] = [t.month for t in pd.DatetimeIndex(df_test.datetime)]
+    df_test["day"] = [t.dayofweek for t in pd.DatetimeIndex(df_test.datetime)]
+    df_test["hour"] = [t.hour for t in pd.DatetimeIndex(df_test.datetime)]
+    df_test["weekday"] = [t for t in pd.DatetimeIndex(df_test.datetime).weekday]
+
     # 無用なデータを除外
     df_train.drop(["casual", "registered"], axis=1, inplace=True)
-    #df_train.drop(["datetime"], axis=1, inplace=True)
-    #df_test.drop(["datetime"], axis=1, inplace=True)
+    df_train.drop(["datetime"], axis=1, inplace=True)
+    df_test.drop(["datetime"], axis=1, inplace=True)
 
     # 全特徴量を一括で処理
     for col in df_train.columns:

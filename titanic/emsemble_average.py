@@ -40,11 +40,16 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="titanic")
     parser.add_argument("--n_splits", type=int, default=4, help="k-fold CV での学習用データセットの分割数")
-    parser.add_argument("--vote_method", choices=["majority_vote", "probability_vote"], default="probability_vote", help="固定値で平均化 or 確率値で平均化")
+    parser.add_argument("--vote_method", choices=["majority_vote", "probability_vote"], default="probability_vote", help="多数決 or 確率値で重み付け平均化")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
+
+    # 実験名を自動的に変更
+    if( args.exper_name == "emsemble_average" ):
+        args.exper_name = args.exper_name + "_" + args.vote_method
+
     if( args.debug ):
         for key, value in vars(args).items():
             print('%s: %s' % (str(key), str(value)))
@@ -122,16 +127,16 @@ if __name__ == '__main__':
         forest1.load_params( "parames/random_forest_classifier_titanic.yml" )
 
         bagging1 = SklearnClassifier( BaggingClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) ) )
-        #bagging1.load_params( "parames/bagging_classifier_titanic.yml" )
+        bagging1.load_params( "parames/tuning_hyper_params_bagging.yml" )
 
         adaboost1 = SklearnClassifier( AdaBoostClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) ) )
-        #adaboost1.load_params( "parames/adaboostclassifier_titanic.yml" )
+        adaboost1.load_params( "parames/tuning_hyper_params_adaboost.yml" )
 
-        xgboost1 = XGBoostClassifier( model = xgb.XGBClassifier, train_type = "fit", use_valid = True, debug = args.debug )
+        xgboost1 = XGBoostClassifier( model = xgb.XGBClassifier(), train_type = "fit", use_valid = True, debug = args.debug )
         xgboost1.load_params( "parames/xgboost_classifier_titanic.yml" )
 
         catboost1 = CatBoostClassifier( model = catboost.CatBoostClassifier(), use_valid = True, debug = args.debug )
-        #catboost1.load_params( "parames/catboost_classifier_titanic.yml" )
+        catboost1.load_params( "parames/tuning_hyper_params_catboost.yml" )
 
         dnn1 = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
 
@@ -145,7 +150,7 @@ if __name__ == '__main__':
         """
         model = WeightAverageEnsembleClassifier(
             classifiers  = [ logistic1, knn1, svm1, forest1, bagging1, adaboost1, xgboost1, catboost1, dnn1 ],
-            weights = [ 0.01, 0.01, 0.02, 0.05, 0.15, 0.15, 0.3, 0.4, 0.05 ],
+            weights = [ 0.01, 0.01, 0.03, 0.03, 0.07, 0.07, 0.2, 0.53, 0.05 ],
             vote_method = args.vote_method,
         )
         

@@ -1,0 +1,16 @@
+{
+    "model": {
+        "name": "bagging",
+        "model_params": {
+            "n_estimators": 1000,
+            "max_samples": 0.7630698706294716,
+            "max_features": 0.9483649753320798,
+            "bootstrap": 1,
+            "random_state": 71,
+            "base_estimator__random_state": 8,
+            "base_estimator__max_features": 0.3888274424827364,
+            "base_estimator__min_samples_leaf": 1,
+            "base_estimator__min_samples_split": 3
+        }
+    }
+}

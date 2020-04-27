@@ -195,7 +195,7 @@ class XGBoostRegressor( BaseEstimator, RegressorMixin ):
         return predicts
 
     def plot_importance(self, save_path):
-        _, axis = plt.subplots(figsize=(8,12))
+        _, axis = plt.subplots()
         xgb.plot_importance(
             self.model,
             ax = axis,
@@ -327,7 +327,7 @@ class LightGBMRegressor( BaseEstimator, RegressorMixin ):
         return predicts
 
     def plot_importance(self, save_path):
-        _, axis = plt.subplots(figsize=(8, 4))
+        _, axis = plt.subplots()
         lgb.plot_importance(
             self.model,
             figsize=(8, 16),

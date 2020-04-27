@@ -8,7 +8,7 @@ Kaggle の練習用レポジトリ
     - [[Getting Started] Titanic: Machine Learning from Disaster](https://github.com/Yagami360/kaggle_exercises/tree/master/titanic)
 - 回帰
     - [[Getting Started] House Prices: Advanced Regression Techniques](https://github.com/Yagami360/kaggle_exercises/tree/master/house-prices-advanced-regression-techniques)
-    - [Playground] Bike Sharing Demand
+    - [[Playground] Bike Sharing Demand](https://github.com/Yagami360/kaggle_exercises/tree/master/bike-sharing-demand)
 
 - [Featured] Restaurant Revenue Prediction (電話番号の認証必要)
 - [Featured] Home Credit Default Risk (電話番号の認証必要)
@@ -23,8 +23,8 @@ Kaggle の練習用レポジトリ
     - [[Playground] Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
 
 - セマンティクスセグメンテーション
-    - [] iMaterialist (Fashion) 2019 at FGVC6
-    - [] iMaterialist (Fashion) 2020 at FGVC6
+    - [Research] iMaterialist (Fashion) 2019 at FGVC6
+    - [Research] iMaterialist (Fashion) 2020 at FGVC6
 
 - 物体検出
     - Facial Keypoints Detection

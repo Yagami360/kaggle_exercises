@@ -116,17 +116,31 @@ if __name__ == '__main__':
         # モデル定義
         #--------------------
         logistic1 = SklearnRegressor( LogisticRegression( penalty='l2', solver="sag", random_state=args.seed ) )
+        logistic1.load_params( "parames/tuning_hyper_params_logistic.yml" )
+
         knn1 = SklearnRegressor( KNeighborsRegressor( n_neighbors = 3, p = 2, metric = 'minkowski', n_jobs = -1 ) )
+        knn1.load_params( "parames/tuning_hyper_params_knn.yml" )
+
         svm1 = SklearnRegressor( SVR( kernel = 'rbf', gamma = 0.1, C = 10.0 ) )
+        svm1.load_params( "parames/tuning_hyper_params_svm.yml" )
+
         forest1 = SklearnRegressor( RandomForestRegressor( criterion = "mse", bootstrap = True, n_estimators = 1001, n_jobs = -1, random_state = args.seed, oob_score = True ) )
+        forest1.load_params( "parames/tuning_hyper_params_random_forest.yml" )
+
         bagging1 = SklearnRegressor( model = BaggingRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
+        bagging1.load_params( "parames/tuning_hyper_params_bagging.yml" )
+
         adaboost1 = SklearnRegressor( model = AdaBoostRegressor( DecisionTreeRegressor(criterion = 'mse', max_depth = None, random_state = args.seed ) ), debug = args.debug )
+        adaboost1.load_params( "parames/tuning_hyper_params_adaboost.yml" )
 
         xgboost1 = XGBoostRegressor( model = xgb.XGBRegressor( booster='gbtree', objective='reg:linear', eval_metric='rmse', learning_rate = 0.01 ), train_type = args.train_type, use_valid = True, debug = args.debug )
-        #xgboost1.load_params( "parames/xgboost_regressor_default.yml" )
+        xgboost1.load_params( "parames/tuning_hyper_params_xgboost.yml" )
 
         lightbgm1 = LightGBMRegressor( model = lgb.LGBMRegressor( objective='regression', metric='rmse' ), train_type = args.train_type, use_valid = True, debug = args.debug )
+        lightbgm1.load_params( "parames/tuning_hyper_params_lightbgm.yml" )
+
         catboost1 = CatBoostRegressor( model = catboost.CatBoostRegressor(), use_valid = True, debug = args.debug )
+        catboost1.load_params( "parames/tuning_hyper_params_catboost.yml" )
 
         # アンサンブルモデル
         model = WeightAverageEnsembleRegressor(

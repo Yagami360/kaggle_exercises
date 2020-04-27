@@ -114,18 +114,18 @@ if __name__ == '__main__':
     forest1.load_params( "parames/random_forest_classifier_titanic.yml" )
 
     bagging1 = SklearnClassifier( BaggingClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) ) )
-    #bagging1.load_params( "parames/bagging_classifier_titanic.yml" )
+    bagging1.load_params( "parames/tuning_hyper_params_bagging.yml" )
 
     adaboost1 = SklearnClassifier( AdaBoostClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) ) )
-    #adaboost1.load_params( "parames/adaboostclassifier_titanic.yml" )
+    adaboost1.load_params( "parames/tuning_hyper_params_adaboost.yml" )
 
-    xgboost1 = XGBoostClassifier( model = xgb.XGBClassifier, train_type = "fit", use_valid = True, debug = args.debug )
+    xgboost1 = XGBoostClassifier( model = xgb.XGBClassifier(), train_type = "fit", use_valid = True, debug = args.debug )
     xgboost1.load_params( "parames/xgboost_classifier_titanic.yml" )
-    xgboost2 = XGBoostClassifier( model = xgb.XGBClassifier, train_type = "fit", use_valid = True, debug = args.debug )
+    xgboost2 = XGBoostClassifier( model = xgb.XGBClassifier(), train_type = "fit", use_valid = True, debug = args.debug )
     xgboost2.load_params( "parames/xgboost_classifier_titanic2.yml" )
 
     catboost1 = CatBoostClassifier( model = catboost.CatBoostClassifier(), use_valid = True, debug = args.debug )
-    #catboost1.load_params( "parames/catboost_classifier_titanic.yml" )
+    catboost1.load_params( "parames/tuning_hyper_params_catboost.yml" )
 
     dnn1 = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
     dnn2 = KerasMLPClassifier( n_input_dim = 8, use_valid = True, debug = args.debug )

@@ -49,7 +49,10 @@ if __name__ == '__main__':
 
     # 実験名を自動的に変更
     if( args.exper_name == "single_model" ):
-        args.exper_name = args.exper_name + "_" + args.classifier
+        if( args.params_file == "" ):
+            args.exper_name = args.exper_name + "_" + args.classifier
+        else:
+            args.exper_name = args.exper_name + "_" + args.classifier + "_" + args.params_file.split(".")[0]
 
     if( args.debug ):
         for key, value in vars(args).items():
