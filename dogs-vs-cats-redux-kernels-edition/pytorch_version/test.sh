@@ -2,21 +2,19 @@
 #source activate pytorch11_py36
 set -e
 
-NETWORK_TYPE=my_resnet18
+#NETWORK_TYPE=my_resnet18
 #NETWORK_TYPE=resnet18
-#NETWORK_TYPE=resnet50
+NETWORK_TYPE=resnet50
 
 #LOAD_CHECKPOINTS_PATH=checkpoints/my_resnet18_b64_200411/step_00005001.pth
 #LOAD_CHECKPOINTS_PATH=checkpoints/my_resnet18_b64_200411/model_final.pth
 #LOAD_CHECKPOINTS_PATH=checkpoints/my_resnet18_b64_norm_200411/model_final.pth
 #LOAD_CHECKPOINTS_PATH=checkpoints/my_resnet18_b64_norm_da_200411/step_000100001.pth
-LOAD_CHECKPOINTS_PATH=checkpoints/my_resnet18_b64_norm_da_200411/model_final.pth
-#LOAD_CHECKPOINTS_PATH=checkpoints/${NETWORK_TYPE}_b32_norm_da_200411/model_final.pth
-#LOAD_CHECKPOINTS_PATH=checkpoints/${NETWORK_TYPE}_fc_b32_norm_da_200411/step_00001001.pth
+#LOAD_CHECKPOINTS_PATH=checkpoints/my_resnet18_b64_norm_da_200411/model_final.pth
+LOAD_CHECKPOINTS_PATH=checkpoints/resnet50_fc_b32_norm_da_200411/model_final.pth
 
-EXEP_NAME=${NETWORK_TYPE}_b64_200411_norm_da
-#EXEP_NAME=${NETWORK_TYPE}_b32_200411_norm_da
-#EXEP_NAME=${NETWORK_TYPE}_fc_b32_200411_norm_da
+#EXEP_NAME=${NETWORK_TYPE}_b64_200411_norm_da
+EXEP_NAME=resnet50_fc_b32_norm_da_10k_pytorch
 
 #-------------------
 # 推論処理

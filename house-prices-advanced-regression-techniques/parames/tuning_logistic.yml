@@ -1,0 +1,12 @@
+{
+    "model": {
+        "name": "logistic",
+        "model_params": {
+            "penalty": "l2",
+            "solver": "sag",
+            "C": 70.10100000000001,
+            "random_state": 71,
+            "n_jobs": -1
+        }
+    }
+}

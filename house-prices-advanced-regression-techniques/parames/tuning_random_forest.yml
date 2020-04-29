@@ -1,0 +1,16 @@
+{
+    "model": {
+        "name": "random_forest",
+        "model_params": {
+            "oob_score": 1,
+            "n_estimators": 1000,
+            "criterion": "mse",
+            "max_features": "auto",
+            "min_samples_split": 5,
+            "min_samples_leaf": 10,
+            "bootstrap": 1,
+            "random_state": 71,
+            "n_jobs": -1
+        }
+    }
+}

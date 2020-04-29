@@ -44,7 +44,7 @@ def objective_wrapper(args, X_train, y_train):
             params = {
                 'penalty': trial.suggest_categorical('penalty', ['l2']),
                 "solver" : trial.suggest_categorical("solver", ['sag']), 
-                'C': trial.suggest_discrete_uniform('C', 0.0, 100.0, 0.1),          # 一様分布に従う。
+                'C': trial.suggest_discrete_uniform('C', 0.01, 100.0, 0.1),          # 一様分布に従う。
                 'random_state': trial.suggest_int("random_state", 71, 71),
                 'n_jobs': trial.suggest_int("n_jobs", -1, -1),
             }
@@ -130,7 +130,6 @@ def objective_wrapper(args, X_train, y_train):
                 'reg_alpha': trial.suggest_uniform("reg_alpha", 0, 100),
                 'reg_lambda': trial.suggest_uniform("reg_lambda", 1, 5),
                 'num_leaves': trial.suggest_int("num_leaves", 10, 500),
-                'device': trial.suggest_categorical('boosting', ['cpu']),
                 'verbose' : 0,
             }
         elif( args.classifier == "catboost" ):

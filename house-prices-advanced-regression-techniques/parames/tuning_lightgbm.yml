@@ -1,0 +1,13 @@
+{
+    "model": {
+        "name": "lightgbm",
+        "model_params": {
+            "boosting": "dart",
+            "num_leaves": 96,
+            "learning_rate": 0.01,
+            "max_depth": 1,
+            "reg_alpha": 33.286880714071955,
+            "reg_lambda": 4.957024380392213
+        }
+    }
+}

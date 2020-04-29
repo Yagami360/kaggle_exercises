@@ -47,7 +47,7 @@ def objective_wrapper(args, X_train, y_train):
             params = {
                 'penalty': trial.suggest_categorical('penalty', ['l2']),
                 "solver" : trial.suggest_categorical("solver", ['sag']), 
-                'C': trial.suggest_discrete_uniform('C', 0.0, 100.0, 0.1),          # 一様分布に従う。
+                'C': trial.suggest_loguniform('C', 0.01, 100.0,),          # 一様分布に従う。
                 'random_state': trial.suggest_int("random_state", 71, 71),
                 'n_jobs': trial.suggest_int("n_jobs", -1, -1),
             }
@@ -61,15 +61,14 @@ def objective_wrapper(args, X_train, y_train):
         elif( args.regressor == "svm" ):
             params = {
                 "kernel" : trial.suggest_categorical("kernel", ['rbf']), 
-                'C': trial.suggest_loguniform('C', 0.1, 1000.0),
+                'C': trial.suggest_loguniform('C', 0.01, 1000.0),
                 'gamma': trial.suggest_loguniform('gamma', 1e-8, 10.0),
-                'random_state': trial.suggest_int("random_state", 71, 71),
             }
         elif( args.regressor == "random_forest" ):
             params = {
                 "oob_score" : trial.suggest_int("oob_score", 0, 1),                         # Whether to use out-of-bag samples to estimate the generalization accuracy.(default=False)
                 "n_estimators" : trial.suggest_int("n_estimators", 1000, 1000),             # チューニングは固定
-                "criterion" : trial.suggest_categorical("criterion", ['gini', "entropy"]),  # 不純度関数 [purity]
+                "criterion" : trial.suggest_categorical("criterion", ["mse"]),              # 不純度関数 [purity]
                 'max_features': trial.suggest_categorical('max_features', ['auto', 0.2, 0.4, 0.6, 0.8,]),                            
                 'min_samples_split': trial.suggest_int('min_samples_split', 2, 10),         # min_samples_split must be an integer greater than 1 or a float in (0.0, 1.0]; got the integer 1                   
                 'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 10), 
@@ -88,6 +87,7 @@ def objective_wrapper(args, X_train, y_train):
                 'random_state': trial.suggest_int("random_state", 71, 71),
                 'n_jobs': -1,
                 # 弱識別器のパラメータ（先頭に "base_estimator__" をつけることでアクセス可能 ）                
+                "base_estimator__criterion" : trial.suggest_categorical("base_estimator__criterion", ["mse"]),
                 'base_estimator__max_depth': trial.suggest_int("base_estimator__random_state", 1, 8),
                 'base_estimator__max_features': trial.suggest_float('base_estimator__max_features', 0.0, 1.0),
                 'base_estimator__min_samples_leaf': trial.suggest_int('base_estimator__min_samples_leaf', 1, 10),
@@ -100,6 +100,7 @@ def objective_wrapper(args, X_train, y_train):
                 "learning_rate" : trial.suggest_loguniform("learning_rate", 0.01, 0.01),    # ハイパーパラメーターのチューニング時は固定  
                 'random_state': 71,
                 # 弱識別器のパラメータ（先頭に "base_estimator__" をつけることでアクセス可能 ）                
+                "base_estimator__criterion" : trial.suggest_categorical("base_estimator__criterion", ["mse"]),
                 'base_estimator__max_depth': trial.suggest_int("base_estimator__random_state", 1, 10),
                 'base_estimator__max_features': trial.suggest_float('base_estimator__max_features', 0.0, 1.0),
                 'base_estimator__min_samples_leaf': trial.suggest_int('base_estimator__min_samples_leaf', 1, 10),
@@ -133,7 +134,6 @@ def objective_wrapper(args, X_train, y_train):
                 'reg_alpha': trial.suggest_uniform("reg_alpha", 0, 100),
                 'reg_lambda': trial.suggest_uniform("reg_lambda", 1, 5),
                 'num_leaves': trial.suggest_int("num_leaves", 10, 500),
-                'device': trial.suggest_categorical('boosting', ['cpu']),
                 'verbose' : 0,
             }
         elif( args.regressor == "catboost" ):
@@ -348,7 +348,7 @@ if __name__ == '__main__':
         #--------------------
         # モデルの学習処理
         #--------------------
-        model.fit(X_train_fold, y_train_fold)
+        model.fit(X_train_fold, y_train_fold, X_valid_fold, y_valid_fold)
 
         #--------------------
         # モデルの推論処理

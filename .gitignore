@@ -20,6 +20,12 @@ titanic/catboost_info/*
 
 house-prices-advanced-regression-techniques/datasets/*
 house-prices-advanced-regression-techniques/results/*
+house-prices-advanced-regression-techniques/catboost_info/*
+
+digit-recognizer/datasets/*
+digit-recognizer/results/*
+digit-recognizer/checkpoints/*
+digit-recognizer/catboost_info/*
 
 dogs-vs-cats-redux-kernels-edition/datasets/*
 dogs-vs-cats-redux-kernels-edition/pytorch_version/results/*
@@ -31,3 +37,4 @@ dogs-vs-cats-redux-kernels-edition/keras_version/tensorboard/*
 bike-sharing-demand/datasets/*
 bike-sharing-demand/results/*
 bike-sharing-demand/catboost_info/*
+

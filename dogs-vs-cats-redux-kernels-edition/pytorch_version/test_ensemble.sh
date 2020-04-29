@@ -22,5 +22,7 @@ python test_ensemble.py \
     --network_type ${NETWORK_TYPE1} --network_type ${NETWORK_TYPE2} --network_type ${NETWORK_TYPE3} \
     --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH1} --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH2} --load_checkpoints_path ${LOAD_CHECKPOINTS_PATH3} \
     --batch_size 1 \
-    --n_samplings 100 \
-    --debug
+    --n_samplings 100000 \
+    --debug \
+    --submit
+    

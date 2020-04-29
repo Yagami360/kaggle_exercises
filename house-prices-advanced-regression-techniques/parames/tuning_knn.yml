@@ -1,0 +1,11 @@
+{
+    "model": {
+        "name": "knn",
+        "model_params": {
+            "metric": "minkowski",
+            "p": 2,
+            "n_neighbors": 1,
+            "n_jobs": -1
+        }
+    }
+}

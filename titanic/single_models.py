@@ -38,7 +38,7 @@ if __name__ == '__main__':
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="titanic")
-    parser.add_argument("--classifier", choices=["logistic", "knn", "svm", "random_forest", "bagging", "adaboost", "xgboost", "lightgbm", "catboost", "mlp"], default="catboost", help="チューニングするモデル")
+    parser.add_argument("--classifier", choices=["logistic", "knn", "svm", "random_forest", "bagging", "adaboost", "xgboost", "lightgbm", "catboost", "mlp"], default="catboost", help="分類器モデルの種類")
     parser.add_argument("--params_file", type=str, default="")
     parser.add_argument('--train_type', choices=['train', 'fit'], default="fit", help="GDBTの学習タイプ")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
@@ -107,7 +107,7 @@ if __name__ == '__main__':
         print( "len(y_pred_train) : ", len(y_pred_train) )
 
     #================================
-    # 最良モデルでの学習 & 推論
+    # モデルの学習 & 推論処理
     #================================    
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
     kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)

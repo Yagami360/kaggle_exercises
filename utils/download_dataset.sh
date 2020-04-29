@@ -4,7 +4,8 @@ set -e
 #COMPETITIONS_NAME=house-prices-advanced-regression-techniques
 #COMPETITIONS_NAME=dogs-vs-cats-redux-kernels-edition
 #COMPETITIONS_NAME=imaterialist-fashion-2020-fgvc7
-COMPETITIONS_NAME=bike-sharing-demand
+#COMPETITIONS_NAME=bike-sharing-demand
+COMPETITIONS_NAME=digit-recognizer
 
 mkdir -p ../${COMPETITIONS_NAME}
 mkdir -p ../${COMPETITIONS_NAME}/datasets
