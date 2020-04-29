@@ -19,7 +19,7 @@ Kaggle の練習用レポジトリ
 
 ### 画像コンペ
 - 画像分類
-    - [Getting Started] Digit Recognizer
+    - [[Getting Started] Digit Recognizer](https://github.com/Yagami360/kaggle_exercises/tree/master/digit-recognizer)
     - [[Playground] Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
 
 - セマンティクスセグメンテーション

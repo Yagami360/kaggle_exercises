@@ -73,7 +73,7 @@ if __name__ == '__main__':
         args.exper_name += "_" + args.classifier
         if( args.data_augument ):
             args.exper_name += "_da"        
-        if( args.classifier in ["mlp", "pretrained_resnet50"] ):
+        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc"] ):
             args.exper_name += "_ep" + str(args.n_epoches)
             args.exper_name += "_b" + str(args.batch_size)
             args.exper_name += "_lr{}".format(args.lr)
@@ -182,9 +182,9 @@ if __name__ == '__main__':
                 model = CatBoostImageClassifier( model = catboost.CatBoostClassifier( loss_function="MultiClass", iterations = 1000 ), use_valid = True, debug = args.debug )
         elif( args.classifier == "mlp" ):
             model = KerasMLPImageClassifier( 
-                n_input_dim = X_train_fold.shape[1] * X_train_fold.shape[2] * X_train_fold.shape[3], 
+                n_input_dim = X_train_fold.shape[1] * X_train_fold.shape[2] * X_train_fold.shape[3], n_classes = args.n_classes, 
                 n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
-                use_valid = True, one_hot_encode = True, callbacks = callbacks, use_datagen = True, datagen = datagen, debug = args.debug
+                use_valid = True, one_hot_encode = True, callbacks = callbacks, use_datagen = False, datagen = datagen, debug = args.debug
             )
         elif( args.classifier == "resnet50" ):
             model = KerasResNet50ImageClassifier( 

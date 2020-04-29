@@ -3,6 +3,7 @@ import numpy as np
 import yaml
 from matplotlib import pyplot as plt
 import seaborn as sns
+import math
 
 # scikit-learn ライブラリ関連
 from sklearn.base import BaseEstimator                      # 推定器 Estimator の上位クラス. get_params(), set_params() 関数が定義されている.
@@ -536,6 +537,7 @@ class KerasMLPImageClassifier( BaseEstimator, ClassifierMixin ):
                 evals_result = self.model.fit_generator( 
                     self.datagen.flow( X_train, y_train, batch_size=self.batch_size ), 
                     epochs = self.n_epoches,
+                    steps_per_epoch = math.ceil(len(X_train) / self.batch_size),
                     validation_data = ( X_valid, y_valid ),
                     shuffle = True, verbose = 1,
                     callbacks = self.callbacks,
@@ -545,6 +547,7 @@ class KerasMLPImageClassifier( BaseEstimator, ClassifierMixin ):
                 evals_result = self.model.fit_generator( 
                     self.datagen.flow(X_train, y_train, batch_size=self.batch_size), 
                     epochs = self.n_epoches,
+                    steps_per_epoch = math.ceil(len(X_train) / self.batch_size),
                     shuffle = True, verbose = 1,
                     callbacks = self.callbacks,
                     workers = -1, use_multiprocessing = True,
@@ -571,13 +574,13 @@ class KerasMLPImageClassifier( BaseEstimator, ClassifierMixin ):
 
     def predict(self, X_test):
         X_test = X_test.reshape(X_test.shape[0],-1)
-        predicts = self.model.predict( X_test, use_multiprocessing = True, verbose = 1 )
+        predicts = self.model.predict( X_test, verbose = 1 )
         predicts = np.argmax(predicts, axis = 1)
         return predicts
 
     def predict_proba(self, X_test):
         X_test = X_test.reshape(X_test.shape[0],-1)
-        predicts = self.model.predict( X_test, use_multiprocessing = True, verbose = 1 )
+        predicts = self.model.predict( X_test, verbose = 1 )
         #predicts = predicts[:,1] 
         return predicts
 
@@ -596,7 +599,7 @@ class KerasMLPImageClassifier( BaseEstimator, ClassifierMixin ):
         for i, evals_result in enumerate(self.evals_results):
             axis.plot(evals_result['val_loss'], label='valid')
 
-        plt.xlabel('iters')
+        plt.xlabel('epoches')
         plt.ylabel("loss")
         plt.xlim( [0,self.n_epoches+1] )
         plt.grid()
@@ -612,13 +615,13 @@ class KerasMLPImageClassifier( BaseEstimator, ClassifierMixin ):
         for i, evals_result in enumerate(self.evals_results):
             axis.plot(evals_result['val_accuracy'], label='valid')
 
-        plt.xlabel('iters')
+        plt.xlabel('epoches')
         plt.ylabel("accuracy")
         plt.xlim( [0,self.n_epoches+1] )
         plt.grid()
         plt.legend()
         plt.tight_layout()
-        plt.savefig( save_path.split(".")[0] + "_accuracy.png", dpi = 300, bbox_inches = 'tight' )
+        plt.savefig( save_path.split(".png")[0] + "_accuracy.png", dpi = 300, bbox_inches = 'tight' )
         return
 
 
@@ -678,8 +681,21 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
             optimizer = optimizers.Adam( lr = lr, beta_1 = beta1, beta_2 = beta2 ),
             metrics = ['accuracy']
         )
-
         return
+
+    def get_params(self, deep=True):
+        params = {
+            "n_epoches": self.n_epoches,
+            "batch_size": self.batch_size,
+            "n_classes": self.n_classes,
+        }
+        return params
+
+    def set_params(self, **params):
+        self.n_epoches = params["n_epoches"]
+        self.batch_size = params["batch_size"]
+        self.n_classes = params["n_classes"]
+        return self
 
     def fit( self, X_train, y_train, X_valid, y_valid ):
         # one-hot encode
@@ -694,6 +710,7 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
                 evals_result = self.model.fit_generator( 
                     self.datagen.flow( X_train, y_train, batch_size=self.batch_size ), 
                     epochs = self.n_epoches,
+                    steps_per_epoch = math.ceil(len(X_train) / self.batch_size),
                     validation_data = ( X_valid, y_valid ),
                     shuffle = True, verbose = 1,
                     callbacks = self.callbacks,
@@ -703,6 +720,7 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
                 evals_result = self.model.fit_generator( 
                     self.datagen.flow(X_train, y_train, batch_size=self.batch_size), 
                     epochs = self.n_epoches,
+                    steps_per_epoch = math.ceil(len(X_train) / self.batch_size),
                     shuffle = True, verbose = 1,
                     callbacks = self.callbacks,
                     workers = -1, use_multiprocessing = True,
@@ -724,20 +742,16 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
                     callbacks = self.callbacks,
                 )
 
-        self.evals_results.append( evals_result )
-
+        self.evals_results.append( evals_result.history )
         return self
 
     def predict(self, X_test):
-        # 推論処理
-        predicts = self.model.predict( X_test, use_multiprocessing = True, verbose = 1 )
-        predicts = predicts[:,1] 
-        #predicts = np.argmax(predicts, axis = 1)
+        predicts = self.model.predict( X_test, verbose = 1 )
+        predicts = np.argmax(predicts, axis = 1)
         return predicts
 
     def predict_proba(self, X_test):
-        # 推論処理
-        predicts = self.model.predict( X_test, use_multiprocessing = True, verbose = 1 )
+        predicts = self.model.predict( X_test, verbose = 1 )
         predicts = predicts[:,1] 
         return predicts
 
@@ -745,6 +759,39 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
         return
 
     def plot_loss(self, save_path):
-        return
+        if( self.debug ):
+            print( "self.evals_results[0].keys(): ", self.evals_results[0].keys() )
+
+        # loss
+        fig = plt.figure()
+        axis = fig.add_subplot(111)
+        for i, evals_result in enumerate(self.evals_results):
+            axis.plot(evals_result['loss'], label='train')
+        for i, evals_result in enumerate(self.evals_results):
+            axis.plot(evals_result['val_loss'], label='valid')
+
+        plt.xlabel('epoches')
+        plt.ylabel("loss")
+        plt.xlim( [0,self.n_epoches+1] )
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig( save_path, dpi = 300, bbox_inches = 'tight' )
+
+        # accuracy
+        fig = plt.figure()
+        axis = fig.add_subplot(111)
+        for i, evals_result in enumerate(self.evals_results):
+            axis.plot(evals_result['acc'], label='train')
+        for i, evals_result in enumerate(self.evals_results):
+            axis.plot(evals_result['val_acc'], label='valid')
+
+        plt.xlabel('epoches')
+        plt.ylabel("accuracy")
+        plt.xlim( [0,self.n_epoches+1] )
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig( save_path.split(".png")[0] + "_accuracy.png", dpi = 300, bbox_inches = 'tight' )
 
 
