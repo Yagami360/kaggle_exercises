@@ -31,7 +31,7 @@ import catboost
 # 自作モジュール
 from dataset import load_dataset
 from models import SklearnImageClassifier, LightGBMImageClassifier, XGBoostImageClassifier, CatBoostImageClassifier
-from models import KerasMLPImageClassifier, KerasResNet50ImageClassifier
+from models import KerasMLPImageClassifier, KerasResNet50ImageClassifier, KerasMNISTResNetImageClassifier
 from utils import save_checkpoint, load_checkpoint
 
 if __name__ == '__main__':
@@ -45,7 +45,7 @@ if __name__ == '__main__':
     parser.add_argument("--classifier", 
                         choices=[
                             "svm", "catboost", 
-                            "mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc",
+                            "mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"
                         ], 
                         default="catboost", help="分類器モデルの種類")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
@@ -58,6 +58,7 @@ if __name__ == '__main__':
     parser.add_argument('--beta2', type=float, default=0.999, help="学習率の減衰率")
     parser.add_argument('--image_height', type=int, default=32, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=32, help="入力画像の幅（pixel単位）")
+    parser.add_argument("--n_channels", type=int, default=3, help="チャンネル数")    
     parser.add_argument("--n_classes", type=int, default=10, help="ラベル数")    
 
     parser.add_argument('--data_augument', action='store_false', help="Data Augumentation を行うか否か")
@@ -73,10 +74,16 @@ if __name__ == '__main__':
         args.exper_name += "_" + args.classifier
         if( args.data_augument ):
             args.exper_name += "_da"        
-        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc"] ):
+        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
             args.exper_name += "_ep" + str(args.n_epoches)
             args.exper_name += "_b" + str(args.batch_size)
             args.exper_name += "_lr{}".format(args.lr)
+
+    # 画像サイズを自動的に変更
+    if( args.classifier == "mnist_resnet" ):
+        args.image_height = 28
+        args.image_width = 28
+        args.n_channels = 1
 
     if( args.debug ):
         for key, value in vars(args).items():
@@ -104,7 +111,7 @@ if __name__ == '__main__':
     df_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
 
     # 学習用データセットとテスト用データセットの設定
-    X_train, y_train, X_test = load_dataset( dataset_dir = args.dataset_dir, image_height = args.image_height, image_width = args.image_width, n_classes = args.n_classes, one_hot_encode = False )
+    X_train, y_train, X_test = load_dataset( dataset_dir = args.dataset_dir, image_height = args.image_height, image_width = args.image_width, n_channels = args.n_channels, n_classes = args.n_classes, one_hot_encode = False )
     y_pred_train = np.zeros((len(y_train),))
     if( args.debug ):
         print( "X_train.shape : ", X_train.shape )
@@ -154,7 +161,7 @@ if __name__ == '__main__':
         #--------------------
         # keras の call back
         #--------------------
-        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc"] ):
+        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
             """
             # 各エポック終了毎のモデルのチェックポイント保存用 call back
             callback_checkpoint = ModelCheckpoint( 
@@ -207,9 +214,15 @@ if __name__ == '__main__':
                 pretrained = True, train_only_fc = True,
                 use_valid = True, one_hot_encode = True, callbacks = callbacks, use_datagen = True, datagen = datagen, debug = args.debug
             )
+        elif( args.classifier == "mnist_resnet" ):
+            model = KerasMNISTResNetImageClassifier( 
+                image_height = args.image_height, image_width = args.image_width, n_channles = 1, n_classes = args.n_classes, 
+                n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
+                use_valid = True, one_hot_encode = True, callbacks = callbacks, use_datagen = True, datagen = datagen, debug = args.debug
+            )
 
         # モデルを読み込む
-        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc"] ):
+        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
             if not args.load_checkpoints_path == '' and os.path.exists(args.load_checkpoints_path):
                 load_checkpoint(model.model, args.load_checkpoints_path )
 
@@ -237,7 +250,7 @@ if __name__ == '__main__':
         # モデルの保存
         #--------------------
         if( args.train_test_mode in ["train_and_test", "train"] ):
-            if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc"] ):
+            if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
                 save_checkpoint( model.model, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_k{}_final'.format(k)) )
 
     # k-fold CV で平均化
@@ -255,7 +268,11 @@ if __name__ == '__main__':
     fig, axes = plt.subplots(5, 5, figsize=(16, 20), facecolor='w')
     for i, ax in enumerate(axes.ravel()):            
         ax.set_title( 'correct : {}, pred : {}'.format( labels[y_train[i]], labels[y_pred_train[i]]) )
-        img = Image.fromarray( np.uint8(X_train[i,:,:]*255) )
+        if( args.n_channels == 1 ):
+            img = Image.fromarray( np.uint8(X_train[i,:,:,0]*255), mode = "L" )
+        else:
+            img = Image.fromarray( np.uint8(X_train[i,:,:]*255), mode = "RBG" )
+
         ax.imshow(img)
 
     fig.savefig( os.path.join(args.results_dir, args.exper_name, "classification.png"), dpi = 100, bbox_inches = 'tight' )

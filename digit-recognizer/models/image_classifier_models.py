@@ -795,3 +795,247 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
         plt.savefig( save_path.split(".png")[0] + "_accuracy.png", dpi = 300, bbox_inches = 'tight' )
 
 
+from keras.layers import Input, Conv2D, Activation, BatchNormalization, GlobalAveragePooling2D, Dense, Dropout
+from keras.layers.merge import add
+from keras.activations import relu, softmax
+from keras.models import Model
+from keras import regularizers
+
+class KerasMNISTResNetImageClassifier( BaseEstimator, ClassifierMixin ):
+    def __init__( 
+        self, 
+        image_height = 28, image_width = 28, n_channles = 1, n_classes = 10,
+        n_epoches = 10, batch_size = 32, lr = 0.001, beta1 = 0.5, beta2 = 0.999,
+        use_valid = False, one_hot_encode = True, callbacks = None, use_datagen = False, datagen = None, debug = False
+    ):
+        self.model = None
+        self.n_epoches = n_epoches
+        self.batch_size = batch_size
+        self.n_classes = n_classes
+        self.use_valid = use_valid
+        self.one_hot_encode = one_hot_encode
+        self.callbacks = callbacks
+        self.use_datagen = use_datagen
+        self.datagen = datagen
+        self.debug = debug
+        self.evals_results = []
+
+        # モデルの定義
+        """
+        self.model = Sequential()
+        self.model.add( keras.layers.Conv2D(kernel_size=3, filters=16, strides=1, padding='same', kernel_regularizer=keras.regularizers.l2(0.01)) )
+        self.model.add( keras.layers.BatchNormalization() )
+        self.model.add( keras.layers.Activation("relu") )
+
+        self.model.add( self.block(16) )
+        self.model.add( self.block(16) )
+        
+        self.model.add( keras.layers.BatchNormalization() )
+        self.model.add( keras.layers.Activation("relu") )
+        self.model.add( keras.layers.GlobalAveragePooling2D() )
+        self.model.add( keras.layers.Dropout(0.2) )
+
+        self.model.add( keras.layers.Dense(n_classes, kernel_regularizer=keras.regularizers.l2(0.01)) )
+        self.model.add( keras.layers.Activation("softmax") )
+        """
+        # input tensor is the 28x28 grayscale image
+        input_tensor = Input((image_height, image_width, n_channles))
+
+        # first conv2d with post-activation to transform the input data to some reasonable form
+        x = Conv2D(kernel_size=3, filters=16, strides=1, padding='same', kernel_regularizer=regularizers.l2(0.01))(input_tensor)
+        x = BatchNormalization()(x)
+        x = Activation(relu)(x)
+
+        # F_1
+        x = self.block(16)(x)
+        # F_2
+        x = self.block(16)(x)
+
+        # F_3
+        # H_3 is the function from the tensor of size 28x28x16 to the the tensor of size 28x28x32
+        # and we can't add together tensors of inconsistent sizes, so we use upscale=True
+        # x = block(32, upscale=True)(x)       # !!! <------- Uncomment for local evaluation
+        # F_4
+        # x = block(32)(x)                     # !!! <------- Uncomment for local evaluation
+        # F_5
+        # x = block(32)(x)                     # !!! <------- Uncomment for local evaluation
+
+        # F_6
+        # x = block(48, upscale=True)(x)       # !!! <------- Uncomment for local evaluation
+        # F_7
+        # x = block(48)(x)                     # !!! <------- Uncomment for local evaluation
+
+        # last activation of the entire network's output
+        x = BatchNormalization()(x)
+        x = Activation(relu)(x)
+
+        # average pooling across the channels
+        # 28x28x48 -> 1x48
+        x = GlobalAveragePooling2D()(x)
+
+        # dropout for more robust learning
+        x = Dropout(0.2)(x)
+
+        # last softmax layer
+        x = Dense(units=n_classes, kernel_regularizer=regularizers.l2(0.01))(x)
+        x = Activation(softmax)(x)
+
+        self.model = Model(inputs=input_tensor, outputs=x)
+
+        # 損失関数と最適化アルゴリズムのせ設定
+        self.model.compile(
+            loss = 'categorical_crossentropy',
+            optimizer = optimizers.Adam( lr = lr, beta_1 = beta1, beta_2 = beta2 ),
+            metrics = ['accuracy']
+        )
+
+        if( self.debug ):
+            self.model.summary()
+        return
+
+    def block(self, n_output, upscale=False):
+        # n_output: number of feature maps in the block
+        # upscale: should we use the 1x1 conv2d mapping for shortcut or not
+        
+        # keras functional api: return the function of type
+        # Tensor -> Tensor
+        def f(x):
+            
+            # H_l(x):
+            # first pre-activation
+            h = keras.layers.BatchNormalization()(x)
+            h = keras.layers.Activation(keras.activations.relu)(h)
+            # first convolution
+            h = keras.layers.Conv2D(kernel_size=3, filters=n_output, strides=1, padding='same', kernel_regularizer=keras.regularizers.l2(0.01))(h)
+            
+            # second pre-activation
+            h = keras.layers.BatchNormalization()(x)
+            h = keras.layers.Activation(keras.activations.relu)(h)
+            # second convolution
+            h = keras.layers.Conv2D(kernel_size=3, filters=n_output, strides=1, padding='same', kernel_regularizer=keras.regularizers.l2(0.01))(h)
+            
+            # f(x):
+            if upscale:
+                # 1x1 conv2d
+                f = keras.layers.Conv2D(kernel_size=1, filters=n_output, strides=1, padding='same')(x)
+            else:
+                # identity
+                f = x
+            
+            # F_l(x) = f(x) + H_l(x):
+            return keras.layers.add([f, h])
+        
+        return f
+    
+    def get_params(self, deep=True):
+        params = {
+            "n_epoches": self.n_epoches,
+            "batch_size": self.batch_size,
+            "n_classes": self.n_classes,
+        }
+        return params
+
+    def set_params(self, **params):
+        self.n_epoches = params["n_epoches"]
+        self.batch_size = params["batch_size"]
+        self.n_classes = params["n_classes"]
+        return self
+
+    def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
+        # one-hot encode
+        if( self.one_hot_encode ):
+            y_train = to_categorical(y_train)
+            if( self.use_valid ):
+                y_valid = to_categorical(y_valid)
+
+        # 学習処理
+        evals_result = {}
+        if( self.use_datagen ):
+            if( self.use_valid ):
+                evals_result = self.model.fit_generator( 
+                    self.datagen.flow( X_train, y_train, batch_size=self.batch_size ), 
+                    epochs = self.n_epoches,
+                    steps_per_epoch = math.ceil(len(X_train) / self.batch_size),
+                    validation_data = ( X_valid, y_valid ),
+                    shuffle = True, verbose = 1,
+                    callbacks = self.callbacks,
+                    workers = -1, use_multiprocessing = True,
+                )
+            else:
+                evals_result = self.model.fit_generator( 
+                    self.datagen.flow(X_train, y_train, batch_size=self.batch_size), 
+                    epochs = self.n_epoches,
+                    steps_per_epoch = math.ceil(len(X_train) / self.batch_size),
+                    shuffle = True, verbose = 1,
+                    callbacks = self.callbacks,
+                    workers = -1, use_multiprocessing = True,
+                )
+        else:
+            if( self.use_valid ):
+                evals_result = self.model.fit( 
+                    X_train, y_train, 
+                    epochs = self.n_epoches, batch_size = self.batch_size,
+                    validation_data = ( X_valid, y_valid ),
+                    shuffle = True, verbose = 1,
+                    callbacks = self.callbacks,
+                )
+            else:
+                evals_result = self.model.fit( 
+                    X_train, y_train, 
+                    epochs = self.n_epoches, batch_size = self.batch_size,
+                    shuffle = True, verbose = 1,
+                    callbacks = self.callbacks,
+                )
+
+        self.evals_results.append( evals_result.history )
+        return self
+
+    def predict(self, X_test):
+        predicts = self.model.predict( X_test, verbose = 1 )
+        predicts = np.argmax(predicts, axis = 1)
+        return predicts
+
+    def predict_proba(self, X_test):
+        predicts = self.model.predict( X_test, verbose = 1 )
+        #predicts = predicts[:,1] 
+        return predicts
+
+    def plot_importance(self, save_path):
+        return
+
+    def plot_loss(self, save_path):
+        if( self.debug ):
+            print( "self.evals_results[0].keys(): ", self.evals_results[0].keys() )
+
+        # loss
+        fig = plt.figure()
+        axis = fig.add_subplot(111)
+        for i, evals_result in enumerate(self.evals_results):
+            axis.plot(evals_result['loss'], label='train')
+        for i, evals_result in enumerate(self.evals_results):
+            axis.plot(evals_result['val_loss'], label='valid')
+
+        plt.xlabel('epoches')
+        plt.ylabel("loss")
+        plt.xlim( [0,self.n_epoches+1] )
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig( save_path, dpi = 300, bbox_inches = 'tight' )
+
+        # accuracy
+        fig = plt.figure()
+        axis = fig.add_subplot(111)
+        for i, evals_result in enumerate(self.evals_results):
+            axis.plot(evals_result['accuracy'], label='train')
+        for i, evals_result in enumerate(self.evals_results):
+            axis.plot(evals_result['val_accuracy'], label='valid')
+
+        plt.xlabel('epoches')
+        plt.ylabel("accuracy")
+        plt.xlim( [0,self.n_epoches+1] )
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig( save_path.split(".png")[0] + "_accuracy.png", dpi = 300, bbox_inches = 'tight' )
+        return
