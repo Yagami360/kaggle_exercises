@@ -9,7 +9,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 
 import umap
-from scipy.sparse.csgraph import connected_components
 
 from preprocessing import preprocessing
 
@@ -116,22 +115,18 @@ def exploratory_data_analysis( args, df_train, df_test ):
     #--------------------------
     # UMAP（回帰問題では無効）
     #--------------------------
-    """
     # データは標準化されている必要あり
     um = umap.UMAP()
-    um.fit( df_train_preprocess )
-    df_train_umap = um.transform( df_train_preprocess )
-    df_test_umap = um.transform( df_test_preprocess )
+    df_train_umap = um.fit_transform( df_train_preprocess )
 
     fig, axis = plt.subplots()
-    plt.scatter( df_train_umap[:,0],df_train_umap[:,1] )
-    plt.colorbar()
-    plt.savefig( os.path.join(args.results_dir, args.exper_name, "umap_train.png"), dpi = 300, bbox_inches = 'tight' )
+    n_classes = 2
+    for i in range(n_classes):
+        mask = ( df_train[target_name] == i )
+        plt.scatter(df_train_umap[mask, 0], df_train_umap[mask, 1], label=target_name + " : " + str(i), s=10, alpha=0.5)
 
-    fig, axis = plt.subplots()
-    plt.scatter( df_test_umap[:,0],df_test_umap[:,1] )
-    plt.colorbar()
-    plt.savefig( os.path.join(args.results_dir, args.exper_name, "umap_test.png"), dpi = 300, bbox_inches = 'tight' )
-    """
-    
+    axis.legend( bbox_to_anchor=(1.00, 1), loc='upper left' )
+    plt.grid()
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "umap.png"), dpi = 300, bbox_inches = 'tight' )
+
     return

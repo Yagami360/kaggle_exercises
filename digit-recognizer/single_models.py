@@ -29,6 +29,7 @@ from sklearn.svm import SVC
 import catboost
 
 # 自作モジュール
+from preprocessing import exploratory_data_analysis
 from dataset import load_dataset
 from models import SklearnImageClassifier, LightGBMImageClassifier, XGBoostImageClassifier, CatBoostImageClassifier
 from models import KerasMLPImageClassifier, KerasResNet50ImageClassifier, KerasMNISTResNetImageClassifier
@@ -65,6 +66,7 @@ if __name__ == '__main__':
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="cpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--submit', action='store_true')
+    parser.add_argument('--eda', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
@@ -121,6 +123,12 @@ if __name__ == '__main__':
         print( "y_train.shape : ", y_train.shape )
         print( "X_test.shape : ", X_test.shape )
         print( "y_pred_train.shape : ", y_pred_train.shape )
+
+    #================================
+    # 前処理
+    #================================
+    if( args.eda ):
+        exploratory_data_analysis( args, X_train, y_train, X_test )
 
     # データオーギュメントとバッチ単位で学習のための DataGenerator
     if( args.data_augument ):

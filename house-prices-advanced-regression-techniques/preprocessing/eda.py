@@ -119,19 +119,13 @@ def exploratory_data_analysis( args, df_train, df_test ):
     """
     # データは標準化されている必要あり
     um = umap.UMAP()
-    um.fit( df_train_preprocess )
-    df_train_umap = um.transform( df_train_preprocess )
-    df_test_umap = um.transform( df_test_preprocess )
+    df_train_umap = um.fit_transform( df_train_preprocess )
 
     fig, axis = plt.subplots()
-    plt.scatter( df_train_umap[:,0],df_train_umap[:,1] )
-    plt.colorbar()
-    plt.savefig( os.path.join(args.results_dir, args.exper_name, "umap_train.png"), dpi = 300, bbox_inches = 'tight' )
-
-    fig, axis = plt.subplots()
-    plt.scatter( df_test_umap[:,0],df_test_umap[:,1] )
-    plt.colorbar()
-    plt.savefig( os.path.join(args.results_dir, args.exper_name, "umap_test.png"), dpi = 300, bbox_inches = 'tight' )
+    plt.scatter(df_train_umap[:, 0], df_train_umap[:, 1], s=10, alpha=0.5)
+    axis.legend( bbox_to_anchor=(1.00, 1), loc='upper left' )
+    plt.grid()
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "umap.png"), dpi = 300, bbox_inches = 'tight' )
     """
-
+    
     return

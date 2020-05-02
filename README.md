@@ -6,16 +6,15 @@ Kaggle の練習用レポジトリ
 ### テーブルコンペ
 - 分類
     - [[Getting Started] Titanic: Machine Learning from Disaster](https://github.com/Yagami360/kaggle_exercises/tree/master/titanic)
+    - [[Featured] Home Credit Default Risk](https://github.com/Yagami360/kaggle_exercises/tree/master/home-credit-default-risk)
+
 - 回帰
     - [[Getting Started] House Prices: Advanced Regression Techniques](https://github.com/Yagami360/kaggle_exercises/tree/master/house-prices-advanced-regression-techniques)
     - [[Playground] Bike Sharing Demand](https://github.com/Yagami360/kaggle_exercises/tree/master/bike-sharing-demand)
 
-- [Featured] Restaurant Revenue Prediction (電話番号の認証必要)
-- [Featured] Home Credit Default Risk (電話番号の認証必要)
-- [Featured] Mercari Price Suggestion Challenge (電話番号の認証必要)
-
-#### テーブルコンペ（時系列）
-
+- 未分類
+    - [Featured] Restaurant Revenue Prediction
+    - [Featured] Mercari Price Suggestion Challenge
 
 ### 画像コンペ
 - 画像分類
@@ -30,7 +29,8 @@ Kaggle の練習用レポジトリ
     - Facial Keypoints Detection
     - xxx
 
-- [Featured] Deepfake Detection Challenge
+- 未分類
+    - [Featured] Deepfake Detection Challenge
 
 
 ### 自然言語コンペ

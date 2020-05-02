@@ -14,6 +14,12 @@ catboost_training.json
 
 git_pull_reset.sh
 
+*/datasets/*
+*/results/*
+*/checkpoints/*
+*/tensorboard/*
+*/catboost_info/*
+
 titanic/datasets/*
 titanic/results/*
 titanic/catboost_info/*
