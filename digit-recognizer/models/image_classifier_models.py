@@ -457,13 +457,14 @@ class CatBoostImageClassifier( BaseEstimator, ClassifierMixin ):
 class KerasMLPImageClassifier( BaseEstimator, ClassifierMixin ):
     def __init__( 
         self, n_input_dim, n_fmaps = 64, n_classes = 2, 
-        n_epoches = 10, batch_size = 32, lr = 0.001, beta1 = 0.5, beta2 = 0.999,
+        n_epoches = 10, batch_size = 32, batch_size_test = 256, lr = 0.001, beta1 = 0.5, beta2 = 0.999,
         use_valid = False, one_hot_encode = True, callbacks = None, use_datagen = False, datagen = None, debug = False
     ):
         self.model = None
+        self.n_classes = n_classes
         self.n_epoches = n_epoches
         self.batch_size = batch_size
-        self.n_classes = n_classes
+        self.batch_size_test = batch_size_test
         self.use_valid = use_valid
         self.one_hot_encode = one_hot_encode
         self.callbacks = callbacks
@@ -572,15 +573,23 @@ class KerasMLPImageClassifier( BaseEstimator, ClassifierMixin ):
         self.evals_results.append( evals_result.history )
         return self
 
+    def evaluate( self, X_train, y_train ):
+        # one-hot encode
+        if( self.one_hot_encode ):
+            y_train = to_categorical(y_train)
+
+        evals_result = self.model.evaluate( X_train, y_train, batch_size = self.batch_size_test, verbose = 1, )
+        return evals_result
+
     def predict(self, X_test):
         X_test = X_test.reshape(X_test.shape[0],-1)
-        predicts = self.model.predict( X_test, verbose = 1 )
+        predicts = self.model.predict( X_test, batch_size = self.batch_size_test, verbose = 1 )
         predicts = np.argmax(predicts, axis = 1)
         return predicts
 
     def predict_proba(self, X_test):
         X_test = X_test.reshape(X_test.shape[0],-1)
-        predicts = self.model.predict( X_test, verbose = 1 )
+        predicts = self.model.predict( X_test, batch_size = self.batch_size_test, verbose = 1 )
         #predicts = predicts[:,1] 
         return predicts
 
@@ -630,7 +639,7 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
         self, 
         image_height = 224, image_width = 224, n_channles = 3,
         n_classes = 2, 
-        n_epoches = 10, batch_size = 32, lr = 0.001, beta1 = 0.5, beta2 = 0.999,
+        n_epoches = 10, batch_size = 32, batch_size_test = 256, lr = 0.001, beta1 = 0.5, beta2 = 0.999,
         pretrained = True, train_only_fc = True,
         use_valid = True, one_hot_encode = True, callbacks = None, use_datagen = False, datagen = None,debug = False
     ):
@@ -640,6 +649,7 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
         self.image_width = image_width        
         self.n_epoches = n_epoches
         self.batch_size = batch_size
+        self.batch_size_test = batch_size_test
         self.n_classes = n_classes
         self.use_valid = use_valid
         self.one_hot_encode = one_hot_encode
@@ -647,7 +657,7 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
         self.use_datagen = use_datagen
         self.datagen = datagen
         self.debug = debug
-        self.evals_results = []
+        self.evals_result = None
 
         # モデルの定義
         if( pretrained ):
@@ -742,16 +752,24 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
                     callbacks = self.callbacks,
                 )
 
-        self.evals_results.append( evals_result.history )
+        self.evals_result = evals_result.history
         return self
 
+    def evaluate( self, X_train, y_train ):
+        # one-hot encode
+        if( self.one_hot_encode ):
+            y_train = to_categorical(y_train)
+
+        evals_result = self.model.evaluate( X_train, y_train, batch_size = self.batch_size_test, verbose = 1, )
+        return evals_result
+
     def predict(self, X_test):
-        predicts = self.model.predict( X_test, verbose = 1 )
+        predicts = self.model.predict( X_test, batch_size = self.batch_size_test, verbose = 1 )
         predicts = np.argmax(predicts, axis = 1)
         return predicts
 
     def predict_proba(self, X_test):
-        predicts = self.model.predict( X_test, verbose = 1 )
+        predicts = self.model.predict( X_test, batch_size = self.batch_size_test, verbose = 1 )
         predicts = predicts[:,1] 
         return predicts
 
@@ -760,15 +778,13 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
 
     def plot_loss(self, save_path):
         if( self.debug ):
-            print( "self.evals_results[0].keys(): ", self.evals_results[0].keys() )
+            print( "self.evals_result.keys(): ", self.evals_result.keys() )
 
         # loss
         fig = plt.figure()
         axis = fig.add_subplot(111)
-        for i, evals_result in enumerate(self.evals_results):
-            axis.plot(evals_result['loss'], label='train')
-        for i, evals_result in enumerate(self.evals_results):
-            axis.plot(evals_result['val_loss'], label='valid')
+        axis.plot(self.evals_result['loss'], label='train')
+        axis.plot(self.evals_result['val_loss'], label='valid')
 
         plt.xlabel('epoches')
         plt.ylabel("loss")
@@ -781,14 +797,12 @@ class KerasResNet50ImageClassifier( BaseEstimator, ClassifierMixin ):
         # accuracy
         fig = plt.figure()
         axis = fig.add_subplot(111)
-        for i, evals_result in enumerate(self.evals_results):
-            axis.plot(evals_result['acc'], label='train')
-        for i, evals_result in enumerate(self.evals_results):
-            axis.plot(evals_result['val_acc'], label='valid')
+        axis.plot(self.evals_result['acc'], label='train')
+        axis.plot(self.evals_result['val_acc'], label='valid')
 
         plt.xlabel('epoches')
         plt.ylabel("accuracy")
-        plt.xlim( [0,self.n_epoches+1] )
+        #plt.xlim( [0,self.n_epoches+1] )
         plt.grid()
         plt.legend()
         plt.tight_layout()
@@ -805,13 +819,14 @@ class KerasMNISTResNetImageClassifier( BaseEstimator, ClassifierMixin ):
     def __init__( 
         self, 
         image_height = 28, image_width = 28, n_channles = 1, n_classes = 10,
-        n_epoches = 10, batch_size = 32, lr = 0.001, beta1 = 0.5, beta2 = 0.999,
+        n_epoches = 10, batch_size = 32, batch_size_test = 256, lr = 0.001, beta1 = 0.5, beta2 = 0.999, dropout = 0.2,
         use_valid = False, one_hot_encode = True, callbacks = None, use_datagen = False, datagen = None, debug = False
     ):
         self.model = None
+        self.n_classes = n_classes
         self.n_epoches = n_epoches
         self.batch_size = batch_size
-        self.n_classes = n_classes
+        self.batch_size_test = batch_size_test
         self.use_valid = use_valid
         self.one_hot_encode = one_hot_encode
         self.callbacks = callbacks
@@ -874,7 +889,7 @@ class KerasMNISTResNetImageClassifier( BaseEstimator, ClassifierMixin ):
         x = GlobalAveragePooling2D()(x)
 
         # dropout for more robust learning
-        x = Dropout(0.2)(x)
+        x = Dropout(dropout)(x)
 
         # last softmax layer
         x = Dense(units=n_classes, kernel_regularizer=regularizers.l2(0.01))(x)
@@ -990,13 +1005,21 @@ class KerasMNISTResNetImageClassifier( BaseEstimator, ClassifierMixin ):
         self.evals_results.append( evals_result.history )
         return self
 
+    def evaluate( self, X_train, y_train ):
+        # one-hot encode
+        if( self.one_hot_encode ):
+            y_train = to_categorical(y_train)
+
+        evals_result = self.model.evaluate( X_train, y_train, batch_size = self.batch_size_test, verbose = 1, )
+        return evals_result
+
     def predict(self, X_test):
-        predicts = self.model.predict( X_test, verbose = 1 )
+        predicts = self.model.predict( X_test, batch_size = self.batch_size_test, verbose = 1 )
         predicts = np.argmax(predicts, axis = 1)
         return predicts
 
     def predict_proba(self, X_test):
-        predicts = self.model.predict( X_test, verbose = 1 )
+        predicts = self.model.predict( X_test, batch_size = self.batch_size_test, verbose = 1 )
         #predicts = predicts[:,1] 
         return predicts
 
@@ -1027,9 +1050,9 @@ class KerasMNISTResNetImageClassifier( BaseEstimator, ClassifierMixin ):
         fig = plt.figure()
         axis = fig.add_subplot(111)
         for i, evals_result in enumerate(self.evals_results):
-            axis.plot(evals_result['accuracy'], label='train')
+            axis.plot(evals_result['acc'], label='train')
         for i, evals_result in enumerate(self.evals_results):
-            axis.plot(evals_result['val_accuracy'], label='valid')
+            axis.plot(evals_result['val_acc'], label='valid')
 
         plt.xlabel('epoches')
         plt.ylabel("accuracy")

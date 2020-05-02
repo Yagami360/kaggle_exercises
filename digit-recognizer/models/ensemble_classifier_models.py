@@ -15,10 +15,10 @@ from sklearn.model_selection import StratifiedKFold
 
 class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
     """
-    重み付け平均化でのアンサンブルモデルの識別器 classifier の自作クラス.
+    多数決 or 重み付け平均化でのアンサンブルモデルの識別器 classifier の自作クラス.
     scikit-learn ライブラリの推定器 estimator の基本クラス BaseEstimator, ClassifierMixin を継承している.
     """
-    def __init__( self, classifiers, weights = None, vote_method = "probability_vote", clone = False ):
+    def __init__( self, classifiers, weights = [], train_modes = [], vote_method = "probability_vote", clone = False ):
         """
         Args :
             classifiers : list <classifier オブジェクト>
@@ -35,6 +35,7 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
         self.weights = weights
         self.n_classes = 0
         self.n_classifier = len( classifiers )
+        self.train_modes = train_modes
         self.vote_method = vote_method
         self.clone = clone
         self.encoder = LabelEncoder()
@@ -48,6 +49,10 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
         for i, named_classifier in enumerate(self.named_classifiers):
             print( "name {} : {}".format(i, self.named_classifiers[named_classifier]) )
 
+        if( self.train_modes == [] ):
+            for c in range(len(self.classifiers)):
+                train_modes.append("train")
+
         return
 
     def fit( self, X_train, y_train, X_valid = None, y_valid = None ):
@@ -58,12 +63,15 @@ class WeightAverageEnsembleClassifier( BaseEstimator, ClassifierMixin ):
 
         # self.classifiers に設定されている分類器のクローン clone(clf) で fitting
         self.fitted_classifiers = []
-        for clf in self.classifiers:
-            if( self.clone ):
-                # clone() : 同じパラメータの 推定器を生成
-                fitted_clf = clone(clf).fit( X_train, y_train, X_valid, y_valid )
+        for c, clf in enumerate(self.classifiers):
+            if( self.train_modes[c] == "train" ):
+                if( self.clone ):
+                    # clone() : 同じパラメータの 推定器を生成
+                    fitted_clf = clone(clf).fit( X_train, y_train, X_valid, y_valid )
+                else:
+                    fitted_clf = clf.fit( X_train, y_train, X_valid, y_valid )
             else:
-                fitted_clf = clf.fit( X_train, y_train, X_valid, y_valid )
+                fitted_clf = clf
 
             self.fitted_classifiers.append( fitted_clf )
 

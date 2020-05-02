@@ -28,7 +28,7 @@ import lightgbm as lgb
 import catboost
 
 # 自作モジュール
-from preprocessing import preprocessing
+from preprocessing import preprocessing, exploratory_data_analysis
 from models import SklearnRegressor, XGBoostRegressor, LightGBMRegressor, CatBoostRegressor
 
 
@@ -46,6 +46,7 @@ if __name__ == '__main__':
     parser.add_argument('--target_norm', action='store_true')
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
+    parser.add_argument('--eda', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
@@ -83,6 +84,11 @@ if __name__ == '__main__':
     #================================
     # 前処理
     #================================
+    # EDA
+    if( args.eda ):
+        exploratory_data_analysis( args, df_train, df_test )
+
+    # 前処理
     df_train, df_test = preprocessing( args, df_train, df_test )
 
     # 前処理後のデータセットを外部ファイルに保存
@@ -91,6 +97,7 @@ if __name__ == '__main__':
     if( args.debug ):
         print( "df_train.head() : \n", df_train.head() )
         print( "df_test.head() : \n", df_test.head() )
+
 
     #==============================
     # 学習用データセットの分割

@@ -7,7 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 
 
-def preprocessing( df_train, df_test, debug = False ):
+def preprocessing( args, df_train, df_test ):
     # 全データセット
     df_data = pd.concat([df_train, df_test], sort=False)
 
@@ -34,7 +34,7 @@ def preprocessing( df_train, df_test, debug = False ):
     # 全特徴量を一括で処理
     #===========================
     for col in df_train.columns:
-        if( debug ):
+        if( args.debug ):
             print( "df_train[{}].dtypes ] : {}".format(col, df_train[col].dtypes))
 
         # 目的変数
@@ -86,7 +86,7 @@ def preprocessing( df_train, df_test, debug = False ):
     return df_train, df_test
 
 
-def preprocessing1( df_train, df_test, debug = False ):
+def preprocessing1( args, df_train, df_test ):
     # 無用なデータを除外
     df_train.drop(['Name', 'PassengerId', 'SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)
     df_test.drop(['Name', 'PassengerId', 'SibSp', 'Parch', 'Ticket', 'Cabin'], axis=1, inplace=True)

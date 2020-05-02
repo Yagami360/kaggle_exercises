@@ -27,7 +27,7 @@ import lightgbm as lgb
 import catboost
 
 # 自作モジュール
-from preprocessing import preprocessing
+from preprocessing import preprocessing, exploratory_data_analysis
 from models import SklearnClassifier, XGBoostClassifier, LightGBMClassifier, CatBoostClassifier, KerasMLPClassifier
 
 
@@ -44,6 +44,7 @@ if __name__ == '__main__':
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
+    parser.add_argument('--eda', action='store_true')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
@@ -88,7 +89,10 @@ if __name__ == '__main__':
     #================================
     # 前処理
     #================================
-    df_train, df_test = preprocessing( df_train, df_test, debug = args.debug )
+    if( args.eda ):
+        exploratory_data_analysis( args, df_train, df_test )
+
+    df_train, df_test = preprocessing( args, df_train, df_test )
     if( args.debug ):
         print( "df_train.head() : \n", df_train.head() )
         print( "df_test.head() : \n", df_test.head() )

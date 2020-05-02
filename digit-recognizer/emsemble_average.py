@@ -32,24 +32,21 @@ import catboost
 from dataset import load_dataset
 from models import SklearnImageClassifier, LightGBMImageClassifier, XGBoostImageClassifier, CatBoostImageClassifier
 from models import KerasMLPImageClassifier, KerasResNet50ImageClassifier, KerasMNISTResNetImageClassifier
+from models import WeightAverageEnsembleClassifier
 from utils import save_checkpoint, load_checkpoint
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exper_name", default="single_model", help="実験名")
+    parser.add_argument("--exper_name", default="emsemble_average", help="実験名")
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="digit-recognizer")
-    parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
-    parser.add_argument("--classifier", 
-                        choices=[
-                            "svm", "catboost", 
-                            "mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"
-                        ], 
-                        default="catboost", help="分類器モデルの種類")
-    parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
+    parser.add_argument("--train_modes", choices=["train", "test", "eval"], action='append', help="")
+    parser.add_argument("--classifiers", choices=["svm", "catboost", "mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc",], action='append', help="分類器モデルの種類")
     parser.add_argument('--load_checkpoints_paths', action='append', help="モデルの読み込みファイルのパス")
+    parser.add_argument("--vote_method", choices=["majority_vote", "probability_vote"], default="probability_vote", help="多数決 or 確率値で重み付け平均化")    
+    parser.add_argument('--weights', action='append', help="重み付け係数")
     parser.add_argument("--n_epoches", type=int, default=10, help="エポック数")    
     parser.add_argument('--batch_size', type=int, default=64, help="バッチサイズ")
     parser.add_argument('--lr', type=float, default=0.001, help="学習率")
@@ -59,7 +56,6 @@ if __name__ == '__main__':
     parser.add_argument('--image_width', type=int, default=32, help="入力画像の幅（pixel単位）")
     parser.add_argument("--n_channels", type=int, default=3, help="チャンネル数")    
     parser.add_argument("--n_classes", type=int, default=10, help="ラベル数")    
-
     parser.add_argument('--data_augument', action='store_false', help="Data Augumentation を行うか否か")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument("--seed", type=int, default=71)
@@ -69,23 +65,23 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # 実験名を自動的に変更
-    if( args.exper_name == "single_model" ):
-        if( args.train_mode in ["test", "eval"] ):
+    if( args.exper_name == "emsemble_average" ):
+        args.exper_name = args.exper_name + "_" + args.vote_method
+        if( args.train_modes in ["test", "eval"] ):
             args.exper_name = "test_" + args.exper_name
-        args.exper_name += "_" + args.classifier
-        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
-            args.exper_name += "_ep" + str(args.n_epoches)
-            args.exper_name += "_b" + str(args.batch_size)
-            args.exper_name += "_lr{}".format(args.lr)
+        
+        for i in range(len(args.classifiers)):
+            args.exper_name += "_" + args.classifiers[i]
+            """
+            if( args.classifiers[i] in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
+                args.exper_name += "_ep" + str(args.n_epoches)
+                args.exper_name += "_b" + str(args.batch_size)
+                args.exper_name += "_lr{}".format(args.lr)
+            """
+
         args.exper_name += "_k" + str(args.n_splits)
         if( args.data_augument ):
             args.exper_name += "_da"
-
-    # 画像サイズを自動的に変更
-    if( args.classifier == "mnist_resnet" ):
-        args.image_height = 28
-        args.image_width = 28
-        args.n_channels = 1
 
     if( args.debug ):
         for key, value in vars(args).items():
@@ -95,11 +91,6 @@ if __name__ == '__main__':
         os.mkdir(args.results_dir)
     if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
         os.mkdir(os.path.join(args.results_dir, args.exper_name))
-    if( args.train_mode in ["train"] ):
-        if not( os.path.exists(args.save_checkpoints_dir) ):
-            os.mkdir(args.save_checkpoints_dir)
-        if not( os.path.exists(os.path.join(args.save_checkpoints_dir, args.exper_name)) ):
-            os.mkdir( os.path.join(args.save_checkpoints_dir, args.exper_name) )
 
     # 警告非表示
     warnings.simplefilter('ignore', DeprecationWarning)
@@ -162,85 +153,65 @@ if __name__ == '__main__':
             print( "y_valid_fold.shape : ", y_valid_fold.shape )
 
         #--------------------
-        # keras の call back
-        #--------------------
-        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
-            """
-            # 各エポック終了毎のモデルのチェックポイント保存用 call back
-            callback_checkpoint = ModelCheckpoint( 
-                filepath = os.path.join(args.save_checkpoints_dir, args.exper_name, "ep{epoch:03d}.hdf5" ), 
-                monitor = 'loss', 
-                verbose = 1, 
-                save_weights_only = True,   # 
-                save_best_only = False,     # 精度がよくなった時だけ保存するかどうか指定。False の場合は毎 epoch 毎保存．
-                mode = 'auto',              # 
-                period = 1                  # 何エポックごとに保存するか
-            )
-            callbacks = [ callback_checkpoint ]
-            """
-            callbacks = None
-
-        #--------------------
         # モデルの定義
         #--------------------
-        if( args.classifier == "svm" ):
-            model = SklearnImageClassifier( SVC( kernel = 'rbf', gamma = 0.1, C = 10.0 ) )
-        elif( args.classifier == "catboost" ):
-            if( args.device == "gpu" ): 
-                model = CatBoostImageClassifier( model = catboost.CatBoostClassifier( loss_function="MultiClass", iterations = 1000, task_type="GPU", devices='0:1' ), use_valid = True, debug = args.debug )  # iterations = (trees / (epochs * batches)
-            else:
-                model = CatBoostImageClassifier( model = catboost.CatBoostClassifier( loss_function="MultiClass", iterations = 1000 ), use_valid = True, debug = args.debug )
-        elif( args.classifier == "mlp" ):
-            model = KerasMLPImageClassifier( 
-                n_input_dim = X_train_fold.shape[1] * X_train_fold.shape[2] * X_train_fold.shape[3], n_classes = args.n_classes, 
-                n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
-                use_valid = True, one_hot_encode = True, callbacks = callbacks, use_datagen = False, datagen = datagen, debug = args.debug
-            )
-        elif( args.classifier == "resnet50" ):
-            model = KerasResNet50ImageClassifier( 
-                image_height = args.image_height, image_width = args.image_width, n_channles = 3, n_classes = args.n_classes, 
-                n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
-                pretrained = False, train_only_fc = False,
-                use_valid = True, one_hot_encode = True, callbacks = callbacks, use_datagen = True, datagen = datagen, debug = args.debug
-            )
-        elif( args.classifier == "pretrained_resnet50" ):
-            model = KerasResNet50ImageClassifier( 
-                image_height = args.image_height, image_width = args.image_width, n_channles = 3, n_classes = args.n_classes, 
-                n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
-                pretrained = True, train_only_fc = False,
-                use_valid = True, one_hot_encode = True, callbacks = callbacks, use_datagen = True, datagen = datagen, debug = args.debug
-            )
-        elif( args.classifier == "pretrained_resnet50_fc" ):
-            model = KerasResNet50ImageClassifier( 
-                image_height = args.image_height, image_width = args.image_width, n_channles = 3, n_classes = args.n_classes, 
-                n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
-                pretrained = True, train_only_fc = True,
-                use_valid = True, one_hot_encode = True, callbacks = callbacks, use_datagen = True, datagen = datagen, debug = args.debug
-            )
-        elif( args.classifier == "mnist_resnet" ):
-            model = KerasMNISTResNetImageClassifier( 
-                image_height = args.image_height, image_width = args.image_width, n_channles = 1, n_classes = args.n_classes, 
-                n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
-                use_valid = True, one_hot_encode = True, callbacks = callbacks, use_datagen = True, datagen = datagen, debug = args.debug
-            )
+        models = []
+        for c, classifier in enumerate(args.classifiers):
+            if( classifier == "svm" ):
+                model = SklearnImageClassifier( SVC( kernel = 'rbf', gamma = 0.1, C = 10.0 ) )
+            elif( classifier == "catboost" ):
+                if( args.device == "gpu" ): 
+                    model = CatBoostImageClassifier( model = catboost.CatBoostClassifier( loss_function="MultiClass", iterations = 1000, task_type="GPU", devices='0:1' ), use_valid = True, debug = args.debug )  # iterations = (trees / (epochs * batches)
+                else:
+                    model = CatBoostImageClassifier( model = catboost.CatBoostClassifier( loss_function="MultiClass", iterations = 1000 ), use_valid = True, debug = args.debug )
+            elif( classifier == "mlp" ):
+                model = KerasMLPImageClassifier( 
+                    n_input_dim = X_train_fold.shape[1] * X_train_fold.shape[2] * X_train_fold.shape[3], n_classes = args.n_classes, 
+                    n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
+                    use_valid = True, one_hot_encode = True, callbacks = None, use_datagen = False, datagen = datagen, debug = args.debug
+                )
+            elif( classifier == "resnet50" ):
+                model = KerasResNet50ImageClassifier( 
+                    image_height = args.image_height, image_width = args.image_width, n_channles = 3, n_classes = args.n_classes, 
+                    n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
+                    pretrained = False, train_only_fc = False,
+                    use_valid = True, one_hot_encode = True, callbacks = None, use_datagen = True, datagen = datagen, debug = args.debug
+                )
+            elif( classifier == "pretrained_resnet50" ):
+                model = KerasResNet50ImageClassifier( 
+                    image_height = args.image_height, image_width = args.image_width, n_channles = 3, n_classes = args.n_classes, 
+                    n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
+                    pretrained = True, train_only_fc = False,
+                    use_valid = True, one_hot_encode = True, callbacks = None, use_datagen = True, datagen = datagen, debug = args.debug
+                )
+            elif( classifier == "pretrained_resnet50_fc" ):
+                model = KerasResNet50ImageClassifier( 
+                    image_height = args.image_height, image_width = args.image_width, n_channles = 3, n_classes = args.n_classes, 
+                    n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
+                    pretrained = True, train_only_fc = True,
+                    use_valid = True, one_hot_encode = True, callbacks = None, use_datagen = True, datagen = datagen, debug = args.debug
+                )
 
-        # モデルを読み込む
-        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
-            if( len(args.load_checkpoints_paths) >= k ):
-                if not args.load_checkpoints_paths[k] == '' and os.path.exists(args.load_checkpoints_paths[k]):
-                    load_checkpoint(model.model, args.load_checkpoints_paths[k] )
+            # モデルを読み込む
+            if( classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc"] ):
+                if( len(args.load_checkpoints_paths) >= c*k ):
+                    if not args.load_checkpoints_paths[c*k] == '' and os.path.exists(args.load_checkpoints_paths[c*k]):
+                        load_checkpoint(model.model, args.load_checkpoints_paths[c*k] )
+
+            models.append(model)
+
+        # アンサンブルモデル
+        model = WeightAverageEnsembleClassifier(
+            classifiers = models,
+            weights = args.weights,
+            train_modes = args.train_modes,
+            vote_method = args.vote_method,
+        )
 
         #--------------------
         # モデルの学習処理
         #--------------------
-        if( args.train_mode in ["train"] ):
-            model.fit(X_train_fold, y_train_fold, X_valid_fold, y_valid_fold)
-        elif( args.train_mode in ["eval"] ):
-            if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
-                eval_results_train = model.evaluate( X_train_fold, y_train_fold )
-                eval_results_val = model.evaluate( X_valid_fold, y_valid_fold )
-                print( "loss [train]={:0.5f}, accuracy [train]={:0.5f}".format(eval_results_train[0], eval_results_train[1]) )
-                print( "loss [valid]={:0.5f}, accuracy [valid]={:0.5f}".format(eval_results_val[0], eval_results_val[1]) )
+        model.fit(X_train_fold, y_train_fold, X_valid_fold, y_valid_fold)
 
         #--------------------
         # モデルの推論処理
@@ -252,16 +223,7 @@ if __name__ == '__main__':
         #--------------------
         # 可視化処理
         #--------------------
-        # 損失関数
-        if( args.train_mode in ["train"] ):
-            model.plot_loss( os.path.join(args.results_dir, args.exper_name, "losees_k{}.png".format(k) ) )
-
-        #--------------------
-        # モデルの保存
-        #--------------------
-        if( args.train_mode in ["train"] ):
-            if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
-                save_checkpoint( model.model, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_k{}_final'.format(k)) )
+        pass
 
         k += 1
 
