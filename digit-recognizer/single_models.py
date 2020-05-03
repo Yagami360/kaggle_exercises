@@ -43,12 +43,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="digit-recognizer")
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
-    parser.add_argument("--classifier", 
-                        choices=[
-                            "svm", "catboost", 
-                            "mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"
-                        ], 
-                        default="catboost", help="分類器モデルの種類")
+    parser.add_argument("--classifier", choices=["svm", "catboost", "mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"], default="catboost", help="分類器モデルの種類")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument('--load_checkpoints_paths', action='append', help="モデルの読み込みファイルのパス")
     parser.add_argument("--n_epoches", type=int, default=10, help="エポック数")    
@@ -78,6 +73,7 @@ if __name__ == '__main__':
         if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
             args.exper_name += "_ep" + str(args.n_epoches)
             args.exper_name += "_b" + str(args.batch_size)
+        if( args.classifier in ["catboost", "mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
             args.exper_name += "_lr{}".format(args.lr)
         args.exper_name += "_k" + str(args.n_splits)
         if( args.data_augument ):
@@ -98,10 +94,11 @@ if __name__ == '__main__':
     if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
         os.mkdir(os.path.join(args.results_dir, args.exper_name))
     if( args.train_mode in ["train"] ):
-        if not( os.path.exists(args.save_checkpoints_dir) ):
-            os.mkdir(args.save_checkpoints_dir)
-        if not( os.path.exists(os.path.join(args.save_checkpoints_dir, args.exper_name)) ):
-            os.mkdir( os.path.join(args.save_checkpoints_dir, args.exper_name) )
+        if( args.classifier in ["catboost", "mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
+            if not( os.path.exists(args.save_checkpoints_dir) ):
+                os.mkdir(args.save_checkpoints_dir)
+            if not( os.path.exists(os.path.join(args.save_checkpoints_dir, args.exper_name)) ):
+                os.mkdir( os.path.join(args.save_checkpoints_dir, args.exper_name) )
 
     # 警告非表示
     warnings.simplefilter('ignore', DeprecationWarning)
@@ -195,9 +192,9 @@ if __name__ == '__main__':
             model = SklearnImageClassifier( SVC( kernel = 'rbf', gamma = 0.1, C = 10.0 ) )
         elif( args.classifier == "catboost" ):
             if( args.device == "gpu" ): 
-                model = CatBoostImageClassifier( model = catboost.CatBoostClassifier( loss_function="MultiClass", iterations = 1000, task_type="GPU", devices='0:1' ), use_valid = True, debug = args.debug )  # iterations = (trees / (epochs * batches)
+                model = CatBoostImageClassifier( model = catboost.CatBoostClassifier( loss_function="MultiClass", iterations = 1000, learning_rate = args.lr, task_type="GPU", devices='0:1' ), use_valid = True, debug = args.debug )  # iterations = (trees / (epochs * batches)
             else:
-                model = CatBoostImageClassifier( model = catboost.CatBoostClassifier( loss_function="MultiClass", iterations = 1000 ), use_valid = True, debug = args.debug )
+                model = CatBoostImageClassifier( model = catboost.CatBoostClassifier( loss_function="MultiClass", iterations = 1000, learning_rate = args.lr ), use_valid = True, debug = args.debug )
         elif( args.classifier == "mlp" ):
             model = KerasMLPImageClassifier( 
                 n_input_dim = X_train_fold.shape[1] * X_train_fold.shape[2] * X_train_fold.shape[3], n_classes = args.n_classes, 
@@ -234,9 +231,13 @@ if __name__ == '__main__':
 
         # モデルを読み込む
         if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
-            if( len(args.load_checkpoints_paths) >= k ):
-                if not args.load_checkpoints_paths[k] == '' and os.path.exists(args.load_checkpoints_paths[k]):
+            if( args.load_checkpoints_paths != None ):
+                if not ( args.load_checkpoints_paths[k] == '' and os.path.exists(args.load_checkpoints_paths[k]) ):
                     load_checkpoint(model.model, args.load_checkpoints_paths[k] )
+        elif( args.classifier in ["catboost"] ):
+            if( args.load_checkpoints_paths != None ):
+                if not ( args.load_checkpoints_paths[k] == '' and os.path.exists(args.load_checkpoints_paths[k]) ):
+                    model.model.load_model( args.load_checkpoints_paths[k], format = "json" )
 
         #--------------------
         # モデルの学習処理
@@ -267,11 +268,12 @@ if __name__ == '__main__':
         #--------------------
         # モデルの保存
         #--------------------
+        k += 1
         if( args.train_mode in ["train"] ):
             if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc", "mnist_resnet"] ):
                 save_checkpoint( model.model, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_k{}_final'.format(k)) )
-
-        k += 1
+            elif( args.classifier in ["catboost"] ):
+                model.model.save_model( os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_k{}_final.json'.format(k)), format = "json" )
 
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)

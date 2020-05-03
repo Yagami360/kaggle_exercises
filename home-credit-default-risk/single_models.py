@@ -29,7 +29,7 @@ import catboost
 # 自作モジュール
 from preprocessing import preprocessing, exploratory_data_analysis
 from models import SklearnClassifier, XGBoostClassifier, LightGBMClassifier, CatBoostClassifier, KerasMLPClassifier
-
+from utils import save_checkpoint, load_checkpoint
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -37,10 +37,13 @@ if __name__ == '__main__':
     parser.add_argument("--dataset_dir", type=str, default="datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
-    parser.add_argument("--competition_id", type=str, default="titanic")
+    parser.add_argument("--competition_id", type=str, default="home-credit-default-risk")
     parser.add_argument("--classifier", choices=["logistic", "knn", "svm", "random_forest", "bagging", "adaboost", "xgboost", "lightgbm", "catboost", "mlp"], default="catboost", help="分類器モデルの種類")
+    parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument("--params_file", type=str, default="")
-    parser.add_argument('--train_type', choices=['train', 'fit'], default="fit", help="GDBTの学習タイプ")
+    parser.add_argument('--load_checkpoints_paths', action='append', help="モデルの読み込みファイルのパス")
+    parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
+    parser.add_argument('--gdbt_train_type', choices=['train', 'fit'], default="fit", help="GDBTの学習タイプ")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
@@ -50,10 +53,9 @@ if __name__ == '__main__':
 
     # 実験名を自動的に変更
     if( args.exper_name == "single_model" ):
-        if( args.params_file == "" ):
-            args.exper_name = args.exper_name + "_" + args.classifier
-        else:
-            args.exper_name = args.exper_name + "_" + args.classifier + "_" + args.params_file.split(".")[0]
+        args.exper_name += "_" + args.classifier
+        if( args.params_file != "" ):
+            args.exper_name += "_" + args.params_file.split(".")[0]
 
     if( args.debug ):
         for key, value in vars(args).items():
@@ -63,6 +65,12 @@ if __name__ == '__main__':
         os.mkdir(args.results_dir)
     if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
         os.mkdir(os.path.join(args.results_dir, args.exper_name))
+    if( args.train_mode in ["train"] ):
+        if( args.classifier in ["catboost", "mlp"] ):
+            if not( os.path.exists(args.save_checkpoints_dir) ):
+                os.mkdir(args.save_checkpoints_dir)
+            if not( os.path.exists(os.path.join(args.save_checkpoints_dir, args.exper_name)) ):
+                os.mkdir( os.path.join(args.save_checkpoints_dir, args.exper_name) )
 
     # 警告非表示
     warnings.simplefilter('ignore', DeprecationWarning)
@@ -74,36 +82,49 @@ if __name__ == '__main__':
     #================================
     # データセットの読み込み
     #================================
-    df_train = pd.read_csv( os.path.join(args.dataset_dir, "train.csv" ) )
-    df_test = pd.read_csv( os.path.join(args.dataset_dir, "test.csv" ) )
-    df_submission = pd.read_csv( os.path.join(args.dataset_dir, "gender_submission.csv" ) )
-    if( args.debug ):
-        print( "df_train.head() : \n", df_train.head() )
-        print( "df_test.head() : \n", df_test.head() )
-        print( "df_submission.head() : \n", df_submission.head() )
-    
+    df_application_train = pd.read_csv( os.path.join(args.dataset_dir, "application_train.csv" ) )
+    df_application_test = pd.read_csv( os.path.join(args.dataset_dir, "application_test.csv" ) )
+
+    df_bureau = pd.read_csv( os.path.join(args.dataset_dir, "bureau.csv" ) )
+    df_bureau_balance = pd.read_csv( os.path.join(args.dataset_dir, "bureau_balance.csv" ) )
+
+    df_previous_application = pd.read_csv( os.path.join(args.dataset_dir, "previous_application.csv" ) )
+    df_pos_cash_balance = pd.read_csv( os.path.join(args.dataset_dir, "POS_CASH_balance.csv" ) )
+    df_credit_card_balance = pd.read_csv( os.path.join(args.dataset_dir, "credit_card_balance.csv" ) )
+    df_installments_payments = pd.read_csv( os.path.join(args.dataset_dir, "installments_payments.csv" ) )
+
+    df_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
+
     #================================
     # 前処理
     #================================
-    if( args.eda ):
-        exploratory_data_analysis( args, df_train, df_test )
-
-    df_train, df_test = preprocessing( args, df_train, df_test )
+    df_train, df_test = preprocessing( 
+        args, 
+        df_application_train, df_application_test, 
+        df_bureau, df_bureau_balance, 
+        df_previous_application, df_pos_cash_balance, df_installments_payments, df_credit_card_balance,
+    )
 
     # 前処理後のデータセットを外部ファイルに保存
-    df_train.to_csv( os.path.join(args.results_dir, args.exper_name, "train_preprocessed.csv"), index=True)
-    df_test.to_csv( os.path.join(args.results_dir, args.exper_name, "test_preprocessed.csv"), index=True)
+    df_train.to_csv( os.path.join(args.results_dir, args.exper_name, "df_train_preprocessed.csv"), index=True)
+    df_test.to_csv( os.path.join(args.results_dir, args.exper_name, "df_test_preprocessed.csv"), index=True)
     if( args.debug ):
-        print( "df_train.head() : \n", df_train.head() )
-        print( "df_test.head() : \n", df_test.head() )
+        print( df_train.shape )
+        print( df_train.head() )
+
+    # EDA
+    if( args.eda ):
+        exploratory_data_analysis( args, df_train, df_test )
 
     #==============================
     # 学習用データセットの分割
     #==============================
+    target_name = 'TARGET'
+
     # 学習用データセットとテスト用データセットの設定
-    X_train = df_train.drop('Survived', axis = 1)
+    X_train = df_train.drop(target_name, axis = 1)
     X_test = df_test
-    y_train = df_train['Survived']
+    y_train = df_train[target_name]
     y_pred_train = np.zeros((len(y_train),))
     if( args.debug ):
         print( "len(X_train) : ", len(X_train) )
@@ -114,7 +135,10 @@ if __name__ == '__main__':
     # モデルの学習 & 推論処理
     #================================    
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
-    kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+    if( args.n_splits == 1 ):
+        kf = StratifiedKFold(n_splits=4, shuffle=True, random_state=args.seed)
+    else:
+        kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
     y_preds_test = []
     k = 0
@@ -141,14 +165,24 @@ if __name__ == '__main__':
         elif( args.classifier == "adaboost" ):
             model = SklearnClassifier( AdaBoostClassifier( DecisionTreeClassifier(criterion = 'entropy', max_depth = None, random_state = args.seed ) ) )
         elif( args.classifier == "xgboost" ):
-            model = XGBoostClassifier( model = xgb.XGBClassifier( booster='gbtree', objective='binary:logistic', eval_metric='logloss', learning_rate=0.01 ), train_type = args.train_type, use_valid = True, debug = args.debug )
+            model = XGBoostClassifier( model = xgb.XGBClassifier( booster='gbtree', objective='binary:logistic', eval_metric='logloss', learning_rate=0.01 ), train_type = args.gdbt_train_type, use_valid = True, debug = args.debug )
             model.load_params( "parames/xgboost_classifier_default.yml" )
         elif( args.classifier == "lightgbm" ):
-            model = LightGBMClassifier( model = lgb.LGBMClassifier( objective='binary', metric='binary_logloss' ), train_type = args.train_type, use_valid = True, debug = args.debug )
+            model = LightGBMClassifier( model = lgb.LGBMClassifier( objective='binary', metric='binary_logloss' ), train_type = args.gdbt_train_type, use_valid = True, debug = args.debug )
         elif( args.classifier == "catboost" ):
-            model = CatBoostClassifier( model = catboost.CatBoostClassifier( loss_function="Logloss" ), use_valid = True, debug = args.debug )
+            model = CatBoostClassifier( model = catboost.CatBoostClassifier( loss_function="Logloss", iterations = 1000 ), use_valid = True, debug = args.debug )
         elif( args.classifier == "mlp" ):
             model = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
+
+        # モデルを読み込む
+        if( args.classifier in ["mlp"] ):
+            if( args.load_checkpoints_paths != None ):
+                if not ( args.load_checkpoints_paths[k] == '' and os.path.exists(args.load_checkpoints_paths[k]) ):
+                    load_checkpoint(model.model, args.load_checkpoints_paths[k] )
+        elif( args.classifier in ["catboost"] ):
+            if( args.load_checkpoints_paths != None ):
+                if not ( args.load_checkpoints_paths[k] == '' and os.path.exists(args.load_checkpoints_paths[k]) ):
+                    model.model.load_model( args.load_checkpoints_paths[k], format = "json" )
 
         # モデルのパラメータ設定
         if not( args.params_file == "" ):
@@ -157,7 +191,12 @@ if __name__ == '__main__':
         #--------------------
         # モデルの学習処理
         #--------------------
-        model.fit(X_train_fold, y_train_fold, X_valid_fold, y_valid_fold)
+        if( args.train_mode in ["train"] ):
+            model.fit(X_train_fold, y_train_fold, X_valid_fold, y_valid_fold)
+        elif( args.train_mode in ["eval"] ):
+            if( args.classifier in ["mlp"] ):
+                eval_results_train = model.evaluate( X_train_fold, y_train_fold )
+                eval_results_val = model.evaluate( X_valid_fold, y_valid_fold )
 
         #--------------------
         # モデルの推論処理
@@ -171,10 +210,25 @@ if __name__ == '__main__':
         #--------------------
         # 損失関数
         model.plot_loss( os.path.join(args.results_dir, args.exper_name, "losees_k{}.png".format(k) ) )
+
+        #--------------------
+        # モデルの保存
+        #--------------------
+        if( args.train_mode in ["train"] ):
+            if( args.classifier in ["mlp"] ):
+                save_checkpoint( model.model, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_k{}_final'.format(k)) )
+            elif( args.classifier in ["catboost"] ):
+                model.model.save_model( os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_k{}_final.json'.format(k)), format = "json" )
+
         k += 1
+        if( k >= args.n_splits ):
+            break
 
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)
+
+    print( "len(y_preds_test) = [{},{}]".format(len(y_preds_test), len(y_preds_test[0])) )
+    print( df_submission[target_name].shape, df_submission[target_name].shape )
 
     # accuracy
     accuracy = (y_train == y_pred_train).sum()/len(y_pred_train)
@@ -192,7 +246,7 @@ if __name__ == '__main__':
     #================================
     # 提出用データに値を設定
     y_sub = list(map(int, y_preds_test))
-    df_submission['Survived'] = y_sub
+    df_submission[target_name] = y_sub
     df_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
     if( args.submit ):
         # Kaggle-API で submit

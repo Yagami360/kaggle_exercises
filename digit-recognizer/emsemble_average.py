@@ -194,9 +194,15 @@ if __name__ == '__main__':
 
             # モデルを読み込む
             if( classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc"] ):
-                if( len(args.load_checkpoints_paths) >= c*k ):
-                    if not args.load_checkpoints_paths[c*k] == '' and os.path.exists(args.load_checkpoints_paths[c*k]):
-                        load_checkpoint(model.model, args.load_checkpoints_paths[c*k] )
+                if( args.load_checkpoints_paths != None ):
+                    if( len(args.load_checkpoints_paths) >= k+c*args.n_splits ):
+                        if not args.load_checkpoints_paths[k+c*args.n_splits] == '' and os.path.exists(args.load_checkpoints_paths[k+c*args.n_splits]):
+                            load_checkpoint(model.model, args.load_checkpoints_paths[k+c*args.n_splits] )
+            elif( classifier in ["catboost"] ):
+                if( args.load_checkpoints_paths != None ):
+                    if( len(args.load_checkpoints_paths) >= k+c*args.n_splits ):
+                        if not args.load_checkpoints_paths[k+c*args.n_splits] == '' and os.path.exists(args.load_checkpoints_paths[k+c*args.n_splits]):
+                            model.model.load_model( args.load_checkpoints_paths[k+c*args.n_splits], format = "json" )
 
             models.append(model)
 

@@ -1,0 +1,25 @@
+{
+    # XGBoost の分類タスクでのデフォルトハイパーパラメーター
+    "model": {
+        "name" : "xgboost_classifier_default",
+        "model_params": {                       
+            "booster": "gbtree",
+            "objective": "binary:logistic",     # ２値分類用
+            'eval_metric': 'logloss',           
+            "learning_rate" : 0.01,             # ハイパーパラメーターのチューニング時は 0.1 で固定  
+            "n_estimators" : 1050,
+            "max_depth": 6,                     # 3 ~ 9 : 一様分布に従う。1刻み
+            "min_child_weight": 1,              # 0.1 ~ 10.0 : 対数が一様分布に従う
+            "subsample": 0.8,                   # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+            "colsample_bytree": 0.8,            # 0.6 ~ 0.95 : 一様分布に従う。0.05 刻み
+            "gamma": 0.0,                       # 1e-8 ~ 1.0 : 対数が一様分布に従う
+            "alpha": 0.0,                       # デフォルト値としておく。余裕があれば変更
+            "reg_lambda": 1.0,                  # デフォルト値としておく。余裕があれば変更
+            "random_state": 71,        
+        },
+        "train_params": {
+            "num_boost_round": 20000,            # 試行回数
+            "early_stopping_rounds": 5000,       # early stopping を行う繰り返し回数
+        },
+    },
+}
