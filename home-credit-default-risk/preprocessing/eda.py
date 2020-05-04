@@ -30,43 +30,46 @@ def exploratory_data_analysis( args, df_train, df_test ):
     #--------------------------
     # データ構造確認
     #--------------------------
-    """
     print( "df_train.head() : \n", df_train.head() )
     print( "df_test.head() : \n", df_test.head() )
     print( "df_train.shape : \n", df_train.shape )
     print( "df_test.shape : \n", df_test.shape )
     for col in df_train.columns:
         print( "df_train[{}].dtypes ] : {}".format(col, df_train[col].dtypes))
-    """
 
     #--------------------------
     # 基本統計量
     #--------------------------
-    """
     print( df_train.describe() )
     print( df_test.describe() )
-    """
+
+    #--------------------------
+    # 各特徴量の値の数を確認
+    # 単一の値のみで構成される特徴量はクレンジング対象
+    #--------------------------
+    for col in df_train.columns:    
+        print( "{} : {}".format(col,df_train[col].nunique()) )
+        if( df_train[col].nunique() == 1 ):
+            print( "特徴量 : {} は 1 値のみ含まれる特徴量でクレンジング対象です".format(col) )
 
     #--------------------------
     # 目的変数の分布
     #--------------------------
-    """
     fig, axis = plt.subplots()
-    sns.distplot( df_train[target_name] )
+    sns.distplot( df_train[target_name], kde=False )
     plt.grid()
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "target_dist.png"), dpi = 200, bbox_inches = 'tight' )
-    """
 
     #--------------------------
     # 説明変数の分布
     #--------------------------
     fig, axis = plt.subplots()
-    df_train.hist( bins=50, figsize=(80,60) )
+    df_train.hist( bins=50, figsize=(80,60), grid=True )
     plt.grid()
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "train_hist_all_features.png"), dpi = 200, bbox_inches = 'tight' )
 
     fig, axis = plt.subplots()
-    df_test.hist( bins=50, figsize=(80,60) )
+    df_test.hist( bins=50, figsize=(80,60), grid=True )
     plt.grid()
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "test_hist_all_features.png"), dpi = 200, bbox_inches = 'tight' )
 
@@ -75,7 +78,7 @@ def exploratory_data_analysis( args, df_train, df_test ):
     #--------------------------
     # 数値データ
     feats = list( df_train.dtypes[ df_train.dtypes != "object" ].index )
-    n_rows, n_cols = 20, 5
+    n_rows, n_cols = 25, 5
     fig, axis = plt.subplots(n_rows, n_cols, figsize=(n_cols*4,n_rows*3) )
     for r in range(0, n_rows):
         for c in range(0, n_cols):  
@@ -83,7 +86,8 @@ def exploratory_data_analysis( args, df_train, df_test ):
             if i < len(feats):
                 df_data = pd.concat([df_train[target_name], df_train[feats[i]]], axis=1)
                 df_data.plot.scatter( x=feats[i], y=target_name, ax = axis[r][c] )
-                plt.grid()
+                axis[r][c].set_title(feats[i])
+                axis[r][c].grid()
 
     plt.tight_layout()
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "target_vs_numuric_features.png"), dpi = 100, bbox_inches = 'tight' )
@@ -101,6 +105,23 @@ def exploratory_data_analysis( args, df_train, df_test ):
 
     plt.tight_layout()    
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "target_vs_categorical_features.png"), dpi = 100, bbox_inches = 'tight' )
+
+
+    # 数値データ
+    feats = list( df_train.dtypes[ df_train.dtypes != "object" ].index )
+    n_rows, n_cols = 25, 5
+    fig, axis = plt.subplots(n_rows, n_cols, figsize=(n_cols*4,n_rows*3) )
+    for r in range(0, n_rows):
+        for c in range(0, n_cols):  
+            i = r * n_cols + c
+            if i < len(feats):
+                sns.kdeplot(df_train.loc[df_train[target_name] == 0, feats[i]], label = '{} : 0'.format(target_name), ax = axis[r][c] )
+                sns.kdeplot(df_train.loc[df_train[target_name] == 1, feats[i]], label = '{} : 1'.format(target_name), ax = axis[r][c] )
+                axis[r][c].set_title(feats[i])
+                axis[r][c].grid()
+
+    plt.tight_layout()
+    plt.show()
 
     #--------------------------
     # 全特徴量同士の相関をヒートマップで表示

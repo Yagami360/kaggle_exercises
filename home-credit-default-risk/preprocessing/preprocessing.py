@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+import gc
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
@@ -24,12 +25,9 @@ def rename_columns_levels( df_data, base_name, base_columns_name ):
     #print( columns )
     return columns
 
-def preprocessing( 
-        args, 
-        df_application_train, df_application_test, 
-        df_bureau, df_bureau_balance, 
-        df_previous_application, df_pos_cash_balance, df_installments_payments, df_credit_card_balance,
-):
+def preprocessing( args ):
+    gc.enable()
+
     # 目的変数
     target_name = 'TARGET'
 
@@ -37,150 +35,130 @@ def preprocessing(
     # 無用なデータを除外（結合前）
     #===========================
     # application_{train|test}
-    df_application_train.drop(['FLAG_DOCUMENT_2', 'FLAG_DOCUMENT_4', 'FLAG_DOCUMENT_5', 'FLAG_DOCUMENT_7', 'FLAG_DOCUMENT_9', 'FLAG_DOCUMENT_10', 'FLAG_DOCUMENT_11', 'FLAG_DOCUMENT_12', 'FLAG_DOCUMENT_13', 'FLAG_DOCUMENT_14', 'FLAG_DOCUMENT_15', 'FLAG_DOCUMENT_16', 'FLAG_DOCUMENT_17', 'FLAG_DOCUMENT_18', 'FLAG_DOCUMENT_19', 'FLAG_DOCUMENT_20', 'FLAG_DOCUMENT_21'], axis=1, inplace=True)
-    df_application_test.drop(['FLAG_DOCUMENT_2', 'FLAG_DOCUMENT_4', 'FLAG_DOCUMENT_5', 'FLAG_DOCUMENT_7', 'FLAG_DOCUMENT_9', 'FLAG_DOCUMENT_10', 'FLAG_DOCUMENT_11', 'FLAG_DOCUMENT_12', 'FLAG_DOCUMENT_13', 'FLAG_DOCUMENT_14', 'FLAG_DOCUMENT_15', 'FLAG_DOCUMENT_16', 'FLAG_DOCUMENT_17', 'FLAG_DOCUMENT_18', 'FLAG_DOCUMENT_19', 'FLAG_DOCUMENT_20', 'FLAG_DOCUMENT_21'], axis=1, inplace=True)
+    df_application_train = pd.read_csv( os.path.join(args.dataset_dir, "application_train.csv" ) )
+    df_application_test = pd.read_csv( os.path.join(args.dataset_dir, "application_test.csv" ) )
+    #df_application_train.drop(['FLAG_DOCUMENT_2', 'FLAG_DOCUMENT_4', 'FLAG_DOCUMENT_5', 'FLAG_DOCUMENT_7', 'FLAG_DOCUMENT_9', 'FLAG_DOCUMENT_10', 'FLAG_DOCUMENT_11', 'FLAG_DOCUMENT_12', 'FLAG_DOCUMENT_13', 'FLAG_DOCUMENT_14', 'FLAG_DOCUMENT_15', 'FLAG_DOCUMENT_16', 'FLAG_DOCUMENT_17', 'FLAG_DOCUMENT_18', 'FLAG_DOCUMENT_19', 'FLAG_DOCUMENT_20', 'FLAG_DOCUMENT_21'], axis=1, inplace=True)
+    #df_application_test.drop(['FLAG_DOCUMENT_2', 'FLAG_DOCUMENT_4', 'FLAG_DOCUMENT_5', 'FLAG_DOCUMENT_7', 'FLAG_DOCUMENT_9', 'FLAG_DOCUMENT_10', 'FLAG_DOCUMENT_11', 'FLAG_DOCUMENT_12', 'FLAG_DOCUMENT_13', 'FLAG_DOCUMENT_14', 'FLAG_DOCUMENT_15', 'FLAG_DOCUMENT_16', 'FLAG_DOCUMENT_17', 'FLAG_DOCUMENT_18', 'FLAG_DOCUMENT_19', 'FLAG_DOCUMENT_20', 'FLAG_DOCUMENT_21'], axis=1, inplace=True)
 
     #===========================
     # サブ構造の結合
     #===========================
-    onehot_encode = False
-
     #---------------------------
     # bureau
     #---------------------------
-    if( onehot_encode ):
-        df_bureau_balance_categorical = pd.get_dummies( df_bureau_balance.select_dtypes('object') )
-        df_bureau_balance_categorical['SK_ID_BUREAU'] = df_bureau_balance['SK_ID_BUREAU']
-        df_bureau_balance_categorical = df_bureau_balance_categorical.groupby('SK_ID_BUREAU', as_index = False).agg(['mean']).reset_index()
-        df_bureau_balance_categorical.columns = rename_columns_levels( df_bureau_balance_categorical, "bureau_balance", 'SK_ID_BUREAU' )
-        df_bureau_balance_categorical = pd.merge(df_bureau_balance, df_bureau_balance_categorical, on='SK_ID_BUREAU', how='left' )
-    else:
-        # bureau_balance
-        for col in df_bureau_balance.columns:
-            # ラベル情報のエンコード
-            if( df_bureau_balance[col].dtypes == "object" ):
-                label_encoder = LabelEncoder()
-                label_encoder.fit(list(df_bureau_balance[col]))
-                df_bureau_balance[col] = label_encoder.transform(list(df_bureau_balance[col]))
+    df_bureau = pd.read_csv( os.path.join(args.dataset_dir, "bureau.csv" ) )
+    df_bureau_balance = pd.read_csv( os.path.join(args.dataset_dir, "bureau_balance.csv" ) )
+
+    # bureau_balance
+    for col in df_bureau_balance.columns:
+        # ラベル情報のエンコード
+        if( df_bureau_balance[col].dtypes == "object" ):
+            label_encoder = LabelEncoder()
+            label_encoder.fit(list(df_bureau_balance[col]))
+            df_bureau_balance[col] = label_encoder.transform(list(df_bureau_balance[col]))
 
     # 同じ SK_ID_BUREAU を集約
-    df_bureau_balance_numric = df_bureau_balance.groupby('SK_ID_BUREAU', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
-    df_bureau_balance_numric.columns = rename_columns_levels( df_bureau_balance_numric, "bureau_balance", 'SK_ID_BUREAU' )
-    df_bureau_balance_numric = pd.merge(df_bureau_balance, df_bureau_balance_numric, on='SK_ID_BUREAU', how='left' )
+    #df_bureau_balance_agg_count = df_bureau_balance.groupby('SK_ID_BUREAU', as_index = False).agg(['count']).reset_index()
+
+    df_bureau_balance_agg = df_bureau_balance.groupby('SK_ID_BUREAU', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
+    df_bureau_balance_agg.columns = rename_columns_levels( df_bureau_balance_agg, "bureau_balance", 'SK_ID_BUREAU' )
+    del df_bureau_balance
+    gc.collect()
 
     # bureau
-    if( onehot_encode ):
-        df_bureau_categorical = pd.get_dummies( df_bureau.select_dtypes('object') )
-        df_bureau_categorical['SK_ID_CURR'] = df_bureau['SK_ID_CURR']
-        df_bureau_categorical = df_bureau_categorical.groupby('SK_ID_CURR', as_index = False).agg(['mean']).reset_index()
-        df_bureau_categorical.columns = rename_columns_levels( df_bureau_categorical, "bureau", 'SK_ID_CURR' )
-        df_bureau_categorical = pd.merge(df_bureau, df_bureau_categorical, on='SK_ID_CURR', how='left' )
-    else:
-        for col in df_bureau.columns:
-            # ラベル情報のエンコード
-            if( df_bureau[col].dtypes == "object" ):
-                label_encoder = LabelEncoder()
-                label_encoder.fit(list(df_bureau[col]))
-                df_bureau[col] = label_encoder.transform(list(df_bureau[col]))
+    for col in df_bureau.columns:
+        # ラベル情報のエンコード
+        if( df_bureau[col].dtypes == "object" ):
+            label_encoder = LabelEncoder()
+            label_encoder.fit(list(df_bureau[col]))
+            df_bureau[col] = label_encoder.transform(list(df_bureau[col]))
 
     # 同じ SK_ID_CURR の行を 過去の申込み回数（SK_ID_CURR あたりの SK_ID_BUREAU の個数）,　各々の特徴量の mean, max, min, で集約する。 
-    df_bureau_numric = df_bureau.groupby('SK_ID_CURR', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
-    df_bureau_numric.columns = rename_columns_levels( df_bureau_numric, "bureau", 'SK_ID_CURR' )
-    df_bureau = pd.merge(df_bureau, df_bureau_numric, on='SK_ID_CURR', how='left' )
+    df_bureau_agg = df_bureau.groupby('SK_ID_CURR', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
+    df_bureau_agg.columns = rename_columns_levels( df_bureau_agg, "bureau", 'SK_ID_CURR' )
 
     # サブ構造を結合
-    df_bureau = pd.merge(df_bureau, df_bureau_balance_numric, on='SK_ID_BUREAU', how='left' )
+    df_bureau = pd.merge(df_bureau, df_bureau_balance_agg, on='SK_ID_BUREAU', how='left' )
+    df_bureau = pd.merge(df_bureau, df_bureau_agg, on='SK_ID_CURR', how='left' )
 
-    print( df_bureau.shape )    # (25121815, 91)
+    # 不要になったメモリを開放
+    del df_bureau_balance_agg, df_bureau_agg
+    gc.collect()
+
+    print( df_bureau.shape )
     print( df_bureau.head() )
 
     #---------------------------
     # previous_application
     #---------------------------
-    # pos_cash_balance
-    if( onehot_encode ):
-        df_pos_cash_balance_categorical = pd.get_dummies( df_pos_cash_balance.select_dtypes('object') )
-        df_pos_cash_balance_categorical['SK_ID_PREV'] = df_pos_cash_balance['SK_ID_PREV']
-        df_pos_cash_balance_categorical = df_pos_cash_balance_categorical.groupby('SK_ID_PREV', as_index = False).agg(['mean']).reset_index()
-        df_pos_cash_balance_categorical.columns = rename_columns_levels( df_pos_cash_balance_categorical, "pos_cash_balance", 'SK_ID_PREV' )
-        df_pos_cash_balance_categorical = pd.merge(df_previous_application, df_pos_cash_balance_categorical, on='SK_ID_PREV', how='left' )
-    else:
-        for col in df_pos_cash_balance.columns:
-            # ラベル情報のエンコード
-            if( df_pos_cash_balance[col].dtypes == "object" ):
-                label_encoder = LabelEncoder()
-                label_encoder.fit(list(df_pos_cash_balance[col]))
-                df_pos_cash_balance[col] = label_encoder.transform(list(df_pos_cash_balance[col]))
+    """
+    df_previous_application = pd.read_csv( os.path.join(args.dataset_dir, "previous_application.csv" ) )
+    df_pos_cash_balance = pd.read_csv( os.path.join(args.dataset_dir, "POS_CASH_balance.csv" ) )
+    df_credit_card_balance = pd.read_csv( os.path.join(args.dataset_dir, "credit_card_balance.csv" ) )
+    df_installments_payments = pd.read_csv( os.path.join(args.dataset_dir, "installments_payments.csv" ) )
 
-    df_pos_cash_balance_numric = df_pos_cash_balance.groupby('SK_ID_PREV', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
-    df_pos_cash_balance_numric.columns = rename_columns_levels( df_pos_cash_balance_numric, "pos_cash_balance", 'SK_ID_PREV' )
-    df_pos_cash_balance_numric = pd.merge(df_previous_application, df_pos_cash_balance_numric, on='SK_ID_PREV', how='left' )
+    # pos_cash_balance
+    for col in df_pos_cash_balance.columns:
+        # ラベル情報のエンコード
+        if( df_pos_cash_balance[col].dtypes == "object" ):
+            label_encoder = LabelEncoder()
+            label_encoder.fit(list(df_pos_cash_balance[col]))
+            df_pos_cash_balance[col] = label_encoder.transform(list(df_pos_cash_balance[col]))
+
+    df_pos_cash_balance_agg = df_pos_cash_balance.groupby('SK_ID_PREV', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
+    df_pos_cash_balance_agg.columns = rename_columns_levels( df_pos_cash_balance_agg, "pos_cash_balance", ["SK_ID_CURR", 'SK_ID_PREV'] )
+    del df_pos_cash_balance
+    gc.collect()
 
     # installments_payments
-    if( onehot_encode ):
-        df_installments_payments_categorical = pd.get_dummies( df_installments_payments.select_dtypes('object') )
-        df_installments_payments_categorical['SK_ID_PREV'] = df_installments_payments['SK_ID_PREV']
-        df_installments_payments_categorical = df_installments_payments_categorical.groupby('SK_ID_PREV', as_index = False).agg(['mean']).reset_index()
-        df_installments_payments_categorical.columns = rename_columns_levels( df_installments_payments_categorical, "installments_payments", 'SK_ID_PREV' )
-        df_installments_payments_categorical = pd.merge(df_previous_application, df_installments_payments_categorical, on='SK_ID_PREV', how='left' )
-    else:
-        for col in df_installments_payments.columns:
-            # ラベル情報のエンコード
-            if( df_installments_payments[col].dtypes == "object" ):
-                label_encoder = LabelEncoder()
-                label_encoder.fit(list(df_installments_payments[col]))
-                df_installments_payments[col] = label_encoder.transform(list(df_installments_payments[col]))
+    for col in df_installments_payments.columns:
+        # ラベル情報のエンコード
+        if( df_installments_payments[col].dtypes == "object" ):
+            label_encoder = LabelEncoder()
+            label_encoder.fit(list(df_installments_payments[col]))
+            df_installments_payments[col] = label_encoder.transform(list(df_installments_payments[col]))
 
-    df_installments_payments_numric = df_installments_payments.groupby('SK_ID_PREV', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
-    df_installments_payments_numric.columns = rename_columns_levels( df_installments_payments_numric, "installments_payments", 'SK_ID_PREV' )
-    df_installments_payments_numric = pd.merge(df_previous_application, df_installments_payments_numric, on='SK_ID_PREV', how='left' )
+    df_installments_payments_agg = df_installments_payments.groupby('SK_ID_PREV', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
+    df_installments_payments_agg.columns = rename_columns_levels( df_installments_payments_agg, "installments_payments", ["SK_ID_CURR", 'SK_ID_PREV'] )
+    del df_installments_payments
+    gc.collect()
 
     # credit_card_balance
-    if( onehot_encode ):
-        df_credit_card_balance_categorical = pd.get_dummies( df_credit_card_balance.select_dtypes('object') )
-        df_credit_card_balance_categorical['SK_ID_PREV'] = df_credit_card_balance['SK_ID_PREV']
-        df_credit_card_balance_categorical = df_credit_card_balance_categorical.groupby('SK_ID_PREV', as_index = False).agg(['mean']).reset_index()
-        df_credit_card_balance_categorical.columns = rename_columns_levels( df_credit_card_balance_categorical, "credit_card_balance", 'SK_ID_PREV' )
-        df_credit_card_balance_categorical = pd.merge(df_previous_application, df_credit_card_balance_categorical, on='SK_ID_PREV', how='left' )
-    else:
-        for col in df_credit_card_balance.columns:
-            # ラベル情報のエンコード
-            if( df_credit_card_balance[col].dtypes == "object" ):
-                label_encoder = LabelEncoder()
-                label_encoder.fit(list(df_credit_card_balance[col]))
-                df_credit_card_balance[col] = label_encoder.transform(list(df_credit_card_balance[col]))
+    for col in df_credit_card_balance.columns:
+        # ラベル情報のエンコード
+        if( df_credit_card_balance[col].dtypes == "object" ):
+            label_encoder = LabelEncoder()
+            label_encoder.fit(list(df_credit_card_balance[col]))
+            df_credit_card_balance[col] = label_encoder.transform(list(df_credit_card_balance[col]))
 
-    df_credit_card_balance_numric = df_credit_card_balance.groupby('SK_ID_PREV', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
-    df_credit_card_balance_numric.columns = rename_columns_levels( df_credit_card_balance_numric, "credit_card_balance", 'SK_ID_PREV' )
-    df_credit_card_balance_numric = pd.merge(df_previous_application, df_credit_card_balance_numric, on='SK_ID_PREV', how='left' )
+    df_credit_card_balance_agg = df_credit_card_balance.groupby('SK_ID_PREV', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
+    df_credit_card_balance_agg.columns = rename_columns_levels( df_credit_card_balance_agg, "credit_card_balance", ["SK_ID_CURR", 'SK_ID_PREV'] )
+    del df_credit_card_balance
+    gc.collect()
 
     # previous_application
-    if( onehot_encode ):
-        df_previous_application_categorical = pd.get_dummies( df_previous_application.select_dtypes('object') )
-        df_previous_application_categorical['SK_ID_CURR'] = df_previous_application['SK_ID_CURR']
-        df_previous_application_categorical = df_previous_application_categorical.groupby('SK_ID_CURR', as_index = False).agg(['mean']).reset_index()
-        df_previous_application_categorical.columns = rename_columns_levels( df_previous_application_categorical, "revious_application", 'SK_ID_CURR' )
-        df_previous_application_categorical = pd.merge(df_previous_application, df_previous_application_categorical, on='SK_ID_CURR', how='left' )
-    else:
-        for col in df_previous_application.columns:
-            # ラベル情報のエンコード
-            if( df_previous_application[col].dtypes == "object" ):
-                label_encoder = LabelEncoder()
-                label_encoder.fit(list(df_previous_application[col]))
-                df_previous_application[col] = label_encoder.transform(list(df_previous_application[col]))
+    for col in df_previous_application.columns:
+        # ラベル情報のエンコード
+        if( df_previous_application[col].dtypes == "object" ):
+            label_encoder = LabelEncoder()
+            label_encoder.fit(list(df_previous_application[col]))
+            df_previous_application[col] = label_encoder.transform(list(df_previous_application[col]))
 
-    df_previous_application_numric = df_previous_application.groupby('SK_ID_CURR', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
-    df_previous_application_numric.columns = rename_columns_levels( df_previous_application_numric, "revious_application", 'SK_ID_CURR' )
-    df_previous_application = pd.merge(df_previous_application, df_previous_application_numric, on='SK_ID_CURR', how='left' )
+    df_previous_application_agg = df_previous_application.groupby('SK_ID_CURR', as_index = False).agg(['count', 'mean', 'max', 'min']).reset_index()
+    df_previous_application_agg.columns = rename_columns_levels( df_previous_application_agg, "revious_application", 'SK_ID_CURR' )
 
     # サブ構造を結合
-    df_previous_application = pd.merge(df_previous_application, df_pos_cash_balance_numric, on='SK_ID_CURR', how='left' )
-    df_previous_application = pd.merge(df_previous_application, df_installments_payments_numric, on='SK_ID_CURR', how='left' )
-    df_previous_application = pd.merge(df_previous_application, df_credit_card_balance_numric, on='SK_ID_CURR', how='left' )
+    df_previous_application = pd.merge(df_previous_application, df_pos_cash_balance_agg, on='SK_ID_PREV', how='left' )
+    df_previous_application = pd.merge(df_previous_application, df_installments_payments_agg, on='SK_ID_PREV', how='left' )
+    df_previous_application = pd.merge(df_previous_application, df_credit_card_balance_agg, on='SK_ID_PREV', how='left' )
+    df_previous_application = pd.merge(df_previous_application, df_previous_application_agg, on='SK_ID_CURR', how='left' )
+
+    del df_pos_cash_balance_agg, df_installments_payments_agg, df_credit_card_balance_agg, df_previous_application_agg
+    gc.collect()
 
     print( df_previous_application.shape )
     print( df_previous_application.head() )
-
+    """
     #===========================
     # 学習用テスト用データに結合
     #===========================
@@ -193,8 +171,10 @@ def preprocessing(
     df_test = pd.merge(df_test, df_bureau, on='SK_ID_CURR', how='left' )
 
     # previous_application とそのサブ構造
+    """
     df_train = pd.merge(df_train, df_previous_application, on='SK_ID_CURR', how='left' )
     df_test = pd.merge(df_test, df_previous_application, on='SK_ID_CURR', how='left' )
+    """
 
     print( df_train.shape )
     print( df_train.head() )
@@ -206,6 +186,14 @@ def preprocessing(
     df_train['DAYS_EMPLOYED'].replace({365243: np.nan}, inplace = True)
     df_test['DAYS_EMPLOYED_ANOM'] = df_test["DAYS_EMPLOYED"] == 365243      # 異常値のフラグ
     df_test['DAYS_EMPLOYED'].replace({365243: np.nan}, inplace = True)
+
+    # 時系列データ
+    df_train['DAYS_BIRTH'] = -1 * df_train['DAYS_BIRTH']
+    df_test['DAYS_BIRTH'] = -1 * df_test['DAYS_BIRTH']
+    df_train['YEARS_BIRTH'] = df_train['DAYS_BIRTH'] / 365
+    df_test['YEARS_BIRTH'] = df_test['DAYS_BIRTH'] / 365
+    #df_train['YEARS_BINNED'] = pd.cut(df_train['YEARS_BIRTH'], bins = np.linspace(20, 70, num = 11))
+    #df_test['YEARS_BINNED'] = pd.cut(df_test['YEARS_BIRTH'], bins = np.linspace(20, 70, num = 11))
 
     #===========================
     # 無用なデータを除外（結合後）
@@ -244,13 +232,6 @@ def preprocessing(
             df_test[col] = label_encoder.transform(list(df_test[col]))
 
         #-----------------------------
-        # 変換値の再変換・異常値のクレンジング
-        #-----------------------------
-        if( col in ["DAYS_BIRTH"] ):
-            df_train[col] = df_train[col] / 365
-            df_test[col] = df_test[col] / 365
-
-        #-----------------------------
         # 欠損値の埋め合わせ
         #-----------------------------
         # NAN 値の埋め合わせ（平均値）
@@ -282,5 +263,14 @@ def preprocessing(
             df_test[col] = scaler.transform( df_test[col].values.reshape(-1,1) )
         """
 
+        #-----------------------------
+        # 値が単一の特徴量をクレンジング
+        #-----------------------------
+        if( df_train[col].nunique() == 1 ):
+            print( "remove {} : {}".format(col,df_train[col].nunique()) )
+            df_train.drop(col)
+            df_test.drop(col)
+
+    gc.disable()
     return df_train, df_test
 

@@ -82,28 +82,12 @@ if __name__ == '__main__':
     #================================
     # データセットの読み込み
     #================================
-    df_application_train = pd.read_csv( os.path.join(args.dataset_dir, "application_train.csv" ) )
-    df_application_test = pd.read_csv( os.path.join(args.dataset_dir, "application_test.csv" ) )
-
-    df_bureau = pd.read_csv( os.path.join(args.dataset_dir, "bureau.csv" ) )
-    df_bureau_balance = pd.read_csv( os.path.join(args.dataset_dir, "bureau_balance.csv" ) )
-
-    df_previous_application = pd.read_csv( os.path.join(args.dataset_dir, "previous_application.csv" ) )
-    df_pos_cash_balance = pd.read_csv( os.path.join(args.dataset_dir, "POS_CASH_balance.csv" ) )
-    df_credit_card_balance = pd.read_csv( os.path.join(args.dataset_dir, "credit_card_balance.csv" ) )
-    df_installments_payments = pd.read_csv( os.path.join(args.dataset_dir, "installments_payments.csv" ) )
-
     df_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
 
     #================================
     # 前処理
     #================================
-    df_train, df_test = preprocessing( 
-        args, 
-        df_application_train, df_application_test, 
-        df_bureau, df_bureau_balance, 
-        df_previous_application, df_pos_cash_balance, df_installments_payments, df_credit_card_balance,
-    )
+    df_train, df_test = preprocessing( args )
 
     # 前処理後のデータセットを外部ファイルに保存
     df_train.to_csv( os.path.join(args.results_dir, args.exper_name, "df_train_preprocessed.csv"), index=True)
