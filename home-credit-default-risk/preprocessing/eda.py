@@ -115,8 +115,8 @@ def exploratory_data_analysis( args, df_train, df_test ):
         for c in range(0, n_cols):  
             i = r * n_cols + c
             if i < len(feats):
-                sns.kdeplot(df_train.loc[df_train[target_name] == 0, feats[i]], label = '{} : 0'.format(target_name), ax = axis[r][c] )
-                sns.kdeplot(df_train.loc[df_train[target_name] == 1, feats[i]], label = '{} : 1'.format(target_name), ax = axis[r][c] )
+                sns.kdeplot(df_train.loc[df_train[target_name] == 0, feats[i]], label = '{} : 0'.format(target_name), ax = axis[r][c], cumulative=True, bw=1.5 )
+                sns.kdeplot(df_train.loc[df_train[target_name] == 1, feats[i]], label = '{} : 1'.format(target_name), ax = axis[r][c], cumulative=True, bw=1.5 )
                 axis[r][c].set_title(feats[i])
                 axis[r][c].grid()
 

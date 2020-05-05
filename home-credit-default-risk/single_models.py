@@ -45,6 +45,7 @@ if __name__ == '__main__':
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
     parser.add_argument('--gdbt_train_type', choices=['train', 'fit'], default="fit", help="GDBTの学習タイプ")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
+    parser.add_argument('--onehot_encode', action='store_false')
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--eda', action='store_true')
@@ -54,6 +55,8 @@ if __name__ == '__main__':
     # 実験名を自動的に変更
     if( args.exper_name == "single_model" ):
         args.exper_name += "_" + args.classifier
+        if( args.onehot_encode ):
+            args.exper_name += "_" + "onehot"
         if( args.params_file != "" ):
             args.exper_name += "_" + args.params_file.split(".")[0]
 
@@ -154,7 +157,7 @@ if __name__ == '__main__':
         elif( args.classifier == "lightgbm" ):
             model = LightGBMClassifier( model = lgb.LGBMClassifier( objective='binary', metric='binary_logloss' ), train_type = args.gdbt_train_type, use_valid = True, debug = args.debug )
         elif( args.classifier == "catboost" ):
-            model = CatBoostClassifier( model = catboost.CatBoostClassifier( loss_function="Logloss", iterations = 1000 ), use_valid = True, debug = args.debug )
+            model = CatBoostClassifier( model = catboost.CatBoostClassifier( loss_function="Logloss", iterations = 1000, eval_metric = "AUC" ), use_valid = True, debug = args.debug )
         elif( args.classifier == "mlp" ):
             model = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
 
@@ -186,9 +189,9 @@ if __name__ == '__main__':
         # モデルの推論処理
         #--------------------
         y_pred_train[valid_index] = model.predict(X_valid_fold)
-        y_pred_test = model.predict(X_test)
+        y_pred_test = model.predict_proba(X_test)[:,1]
         y_preds_test.append(y_pred_test)
-    
+
         #--------------------
         # 可視化処理
         #--------------------
@@ -211,9 +214,6 @@ if __name__ == '__main__':
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)
 
-    print( "len(y_preds_test) = [{},{}]".format(len(y_preds_test), len(y_preds_test[0])) )
-    print( df_submission[target_name].shape, df_submission[target_name].shape )
-
     # accuracy
     accuracy = (y_train == y_pred_train).sum()/len(y_pred_train)
     print( "accuracy [k-fold CV train-valid] : {:0.5f}".format(accuracy) )
@@ -229,7 +229,7 @@ if __name__ == '__main__':
     # Kaggle API での submit
     #================================
     # 提出用データに値を設定
-    y_sub = list(map(int, y_preds_test))
+    y_sub = list(map(float, y_preds_test))
     df_submission[target_name] = y_sub
     df_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
     if( args.submit ):

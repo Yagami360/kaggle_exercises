@@ -58,6 +58,9 @@ Kaggle の練習用レポジトリ
     - 同じ値を持つ特徴量を１つに Group 化するとき（IDなど）には、グループした特徴の count と それに関連した特徴量の min, max, mean, sum などを取る
         - 参考コンペ : home-credit-default-risk のデータセット
     - 外れ値がある特徴量は NAN 値で補完以外にも、外れ値存在フラグの特徴量を新たに追加する方法もあり
+    - 目的変数と強い相関を持つ特徴量に対して、多項式特徴量 PolynomialFeatures（目的変数と強い相関を持つ特徴量間で乗算）を追加する方法もあり
+        - 参考コンペ : home-credit-default-risk ()
+        - 変数EXT_SOURCE_1^2とEXT_SOURCE_2^2の他に、EXT_SOURCE_1×EXT_SOURCE_2、EXT_SOURCE_1×EXT_SOURCE_2^2、EXT_SOURCE_1^2×EXT_SOURCE_2^2などの変数
 
 - ハイパーパラメーターのチューニング
     - ハイパーパラメーターのチューニングは時間がかかるので、一般的に後半で行うほうがよい。

@@ -425,7 +425,8 @@ class CatBoostClassifier( BaseEstimator, ClassifierMixin ):
 
     def plot_importance(self, save_path):
         feature_importance = self.model.get_feature_importance()
-        _, ax = plt.subplots(figsize=(32, 4))
+        plt.rcParams["font.size"] = 6
+        _, ax = plt.subplots(figsize=(6, 50))
         ax.barh( range(len(feature_importance)), feature_importance, tick_label = self.feature_names )
         plt.xlabel('importance')
         plt.ylabel('features')

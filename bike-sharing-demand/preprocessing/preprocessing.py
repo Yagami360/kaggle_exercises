@@ -93,7 +93,7 @@ def preprocessing( args, df_train, df_test ):
         #-----------------------------
         if( df_train[col].nunique() == 1 ):
             print( "remove {} : {}".format(col,df_train[col].nunique()) )
-            df_train.drop(col)
-            df_test.drop(col)
+            df_train.drop([col], axis=1, inplace=True)
+            df_test.drop([col], axis=1, inplace=True)
             
     return df_train, df_test

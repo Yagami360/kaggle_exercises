@@ -83,14 +83,6 @@ def preprocessing( args, df_train, df_test ):
             df_train[col] = scaler.transform( df_train[col].values.reshape(-1,1) )
             df_test[col] = scaler.transform( df_test[col].values.reshape(-1,1) )
 
-        #-----------------------------
-        # 値が単一の特徴量をクレンジング
-        #-----------------------------
-        if( df_train[col].nunique() == 1 ):
-            print( "remove {} : {}".format(col,df_train[col].nunique()) )
-            df_train.drop([col], axis=1, inplace=True)
-            df_test.drop([col], axis=1, inplace=True)
-
     return df_train, df_test
 
 
