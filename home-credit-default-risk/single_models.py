@@ -2,6 +2,7 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import feather
 import random
 import warnings
 import json
@@ -29,7 +30,7 @@ import catboost
 # 自作モジュール
 from preprocessing import preprocessing, exploratory_data_analysis
 from models import SklearnClassifier, XGBoostClassifier, LightGBMClassifier, CatBoostClassifier, KerasMLPClassifier
-from utils import save_checkpoint, load_checkpoint
+from utils import save_checkpoint, load_checkpoint, read_feature, save_feature
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -45,7 +46,13 @@ if __name__ == '__main__':
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
     parser.add_argument('--gdbt_train_type', choices=['train', 'fit'], default="fit", help="GDBTの学習タイプ")
     parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
-    parser.add_argument('--onehot_encode', action='store_false')
+    parser.add_argument('--feature_format', action="store_false", help="前処理を行うか否か" )
+    parser.add_argument('--preprocessing', action="store_false", help="前処理を行うか否か")
+    parser.add_argument('--onehot_encode', action='store_true', help="入力データのカテゴリーデータの one-hot エンコードを行うか否か")
+    parser.add_argument('--invalid_features', action="store_false", help="異常値の特徴量をクレンジングするか否か")
+    parser.add_argument('--time_features', action="store_false", help="時系列特徴量を")
+    parser.add_argument('--polynomial_features', action="store_false", help="多項式特徴量を追加するか否か")
+    parser.add_argument('--domain_features', action="store_false", help="ドメイン知識に基づく特徴量を追加するか否か")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--submit', action='store_true')
     parser.add_argument('--eda', action='store_true')
@@ -57,6 +64,14 @@ if __name__ == '__main__':
         args.exper_name += "_" + args.classifier
         if( args.onehot_encode ):
             args.exper_name += "_" + "onehot"
+        if( args.time_features ):
+            args.exper_name += "_" + "timeFeat"
+        if( args.invalid_features ):
+            args.exper_name += "_" + "invalidFeat"
+        if( args.polynomial_features ):
+            args.exper_name += "_" + "polynomialFeat"
+        if( args.domain_features ):
+            args.exper_name += "_" + "domainFeat"
         if( args.params_file != "" ):
             args.exper_name += "_" + args.params_file.split(".")[0]
 
@@ -90,14 +105,26 @@ if __name__ == '__main__':
     #================================
     # 前処理
     #================================
-    df_train, df_test = preprocessing( args )
+    if( args.preprocessing ):
+        df_train, df_test = preprocessing( args )
+        # 前処理後のデータセットを外部ファイルに保存
+        if( args.feature_format ):
+            save_feature( df_train, os.path.join(args.results_dir, args.exper_name, "df_train_preprocessed.csv") )
+            save_feature( df_test, os.path.join(args.results_dir, args.exper_name, "df_test_preprocessed.csv") )
+        else:
+            df_train.to_csv( os.path.join(args.results_dir, args.exper_name, "df_train_preprocessed.csv"), index=True)
+            df_test.to_csv( os.path.join(args.results_dir, args.exper_name, "df_test_preprocessed.csv"), index=True)
+    else:
+        # 前処理済みファイルからデータセット読み込み
+        if( args.feature_format ):
+            read_feature( os.path.join(args.results_dir, args.exper_name, "df_train_preprocessed.feature") )
+            read_feature( os.path.join(args.results_dir, args.exper_name, "df_test_preprocessed.feature") )
+        else:
+            df_train = pd.read_csv( os.path.join(args.results_dir, args.exper_name, "df_train_preprocessed.csv") )
+            df_test = pd.read_csv( os.path.join(args.results_dir, args.exper_name, "df_test_preprocessed.csv") )
 
-    # 前処理後のデータセットを外部ファイルに保存
-    df_train.to_csv( os.path.join(args.results_dir, args.exper_name, "df_train_preprocessed.csv"), index=True)
-    df_test.to_csv( os.path.join(args.results_dir, args.exper_name, "df_test_preprocessed.csv"), index=True)
-    if( args.debug ):
-        print( df_train.shape )
-        print( df_train.head() )
+    print( df_train.shape )
+    print( df_train.head() )
 
     # EDA
     if( args.eda ):
