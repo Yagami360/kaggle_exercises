@@ -105,7 +105,12 @@ if __name__ == '__main__':
     kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
     y_preds_test = []
+    k = 0
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        # seed 値の固定
+        np.random.seed(args.seed+k)
+        random.seed(args.seed+k)
+
         #--------------------
         # データセットの分割
         #--------------------
@@ -160,6 +165,8 @@ if __name__ == '__main__':
         y_pred_test = model.predict(X_test)
         y_preds_test.append(y_pred_test)
 
+        k += 1
+        
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)
 

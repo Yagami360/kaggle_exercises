@@ -425,14 +425,14 @@ class CatBoostClassifier( BaseEstimator, ClassifierMixin ):
 
     def plot_importance(self, save_path):
         feature_importance = self.model.get_feature_importance()
-        plt.rcParams["font.size"] = 6
+        plt.rcParams["font.size"] = 3
         _, ax = plt.subplots(figsize=(6, 50))
         ax.barh( range(len(feature_importance)), feature_importance, tick_label = self.feature_names )
         plt.xlabel('importance')
         plt.ylabel('features')
         plt.grid()
         plt.tight_layout()
-        plt.savefig( save_path, dpi = 300, bbox_inches = 'tight' )
+        plt.savefig( save_path, dpi = 400, bbox_inches = 'tight' )
         return
 
     def plot_loss(self, save_path):

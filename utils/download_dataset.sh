@@ -6,7 +6,8 @@ set -e
 #COMPETITIONS_NAME=imaterialist-fashion-2020-fgvc7
 #COMPETITIONS_NAME=bike-sharing-demand
 #COMPETITIONS_NAME=digit-recognizer
-COMPETITIONS_NAME=home-credit-default-risk
+#COMPETITIONS_NAME=home-credit-default-risk
+COMPETITIONS_NAME=imaterialist-fashion-2019-FGVC6
 
 mkdir -p ../${COMPETITIONS_NAME}
 mkdir -p ../${COMPETITIONS_NAME}/datasets

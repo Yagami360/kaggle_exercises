@@ -64,10 +64,10 @@ if __name__ == '__main__':
         args.exper_name += "_" + args.classifier
         if( args.onehot_encode ):
             args.exper_name += "_" + "onehot"
-        if( args.time_features ):
-            args.exper_name += "_" + "timeFeat"
         if( args.invalid_features ):
             args.exper_name += "_" + "invalidFeat"
+        if( args.time_features ):
+            args.exper_name += "_" + "timeFeat"
         if( args.polynomial_features ):
             args.exper_name += "_" + "polynomialFeat"
         if( args.domain_features ):
@@ -157,6 +157,10 @@ if __name__ == '__main__':
     y_preds_test = []
     k = 0
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
+        # seed 値の固定
+        np.random.seed(args.seed+k)
+        random.seed(args.seed+k)
+
         #--------------------
         # データセットの分割
         #--------------------
@@ -184,7 +188,7 @@ if __name__ == '__main__':
         elif( args.classifier == "lightgbm" ):
             model = LightGBMClassifier( model = lgb.LGBMClassifier( objective='binary', metric='binary_logloss' ), train_type = args.gdbt_train_type, use_valid = True, debug = args.debug )
         elif( args.classifier == "catboost" ):
-            model = CatBoostClassifier( model = catboost.CatBoostClassifier( loss_function="Logloss", iterations = 1000, eval_metric = "AUC" ), use_valid = True, debug = args.debug )
+            model = CatBoostClassifier( model = catboost.CatBoostClassifier( loss_function="Logloss", iterations = 1000, eval_metric = "AUC", random_seed = args.seed + k ), use_valid = True, debug = args.debug )
         elif( args.classifier == "mlp" ):
             model = KerasMLPClassifier( n_input_dim = len(X_train.columns), use_valid = True, debug = args.debug )
 

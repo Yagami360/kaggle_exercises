@@ -104,7 +104,12 @@ if __name__ == '__main__':
     kf = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
     y_preds_test = []
+    k = 0
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train, y_train)):
+        # seed 値の固定
+        np.random.seed(args.seed+k)
+        random.seed(args.seed+k)
+
         #--------------------
         # データセットの分割
         #--------------------
@@ -167,6 +172,8 @@ if __name__ == '__main__':
 
         y_pred_val[valid_index] = model.predict(X_valid_fold)
     
+        k += 1
+        
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)
 

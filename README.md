@@ -21,15 +21,13 @@ Kaggle の練習用レポジトリ
     - [[Getting Started] Digit Recognizer](https://github.com/Yagami360/kaggle_exercises/tree/master/digit-recognizer)
     - [[Playground] Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
 
-- セマンティクスセグメンテーション
-    - [Research] iMaterialist (Fashion) 2019 at FGVC6
-    - [Research] iMaterialist (Fashion) 2020 at FGVC6
-
 - 物体検出
+    - [Featured] Google AI Open Images - Object Detection Track
+    - [[Research] iMaterialist (Fashion) 2019 at FGVC6](https://github.com/Yagami360/kaggle_exercises/tree/master/imaterialist-fashion-2019-FGVC6)
+    - [Research] iMaterialist (Fashion) 2020 at FGVC6
     - Facial Keypoints Detection
-    - xxx
 
-- 未分類
+- 動画
     - [Featured] Deepfake Detection Challenge
 
 

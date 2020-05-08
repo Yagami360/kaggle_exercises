@@ -121,6 +121,10 @@ if __name__ == '__main__':
     y_preds_test = []
     k = 0
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        # seed 値の固定
+        np.random.seed(args.seed+k)
+        random.seed(args.seed+k)
+        
         #--------------------
         # データセットの分割
         #--------------------
@@ -148,7 +152,7 @@ if __name__ == '__main__':
         elif( args.regressor == "lightgbm" ):
             model = LightGBMRegressor( model = lgb.LGBMRegressor( objective='regression', metric='rmse' ), train_type = args.train_type, use_valid = True, debug = args.debug )
         elif( args.regressor == "catboost" ):
-            model = CatBoostRegressor( model = catboost.CatBoostRegressor(), use_valid = True, debug = args.debug )
+            model = CatBoostRegressor( model = catboost.CatBoostRegressor( random_seed = args.seed + k ), use_valid = True, debug = args.debug )
 
         # モデルのパラメータ設定
         if not( args.params_file == "" ):

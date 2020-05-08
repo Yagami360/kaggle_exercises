@@ -118,6 +118,10 @@ if __name__ == '__main__':
     y_preds_test = []
     k = 0
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        # seed 値の固定
+        np.random.seed(args.seed+k)
+        random.seed(args.seed+k)
+        
         #--------------------
         # データセットの分割
         #--------------------

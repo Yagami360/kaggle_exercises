@@ -157,7 +157,12 @@ def objective_wrapper(args, X_train, y_train):
 
         # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
         kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+        k = 0
         for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+            # seed 値の固定
+            np.random.seed(args.seed+k)
+            random.seed(args.seed+k)
+
             #--------------------
             # データセットの分割
             #--------------------
@@ -199,7 +204,8 @@ def objective_wrapper(args, X_train, y_train):
             # モデルの推論処理
             #--------------------
             y_preds_train[valid_index] = model.predict(X_valid_fold)
-        
+            k += 1
+
         if( args.target_norm ):
             rmse = np.sqrt( mean_squared_error( np.exp(y_train), np.exp(y_preds_train) ) ) 
         else:
@@ -310,7 +316,12 @@ if __name__ == '__main__':
     kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
 
     y_preds_test = []
+    k = 0
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        # seed 値の固定
+        np.random.seed(args.seed+k)
+        random.seed(args.seed+k)
+
         #--------------------
         # データセットの分割
         #--------------------
@@ -354,7 +365,8 @@ if __name__ == '__main__':
         y_preds_train[valid_index] = model.predict(X_valid_fold)
         y_pred_test = model.predict(X_test)
         y_preds_test.append(y_pred_test)
-    
+        k += 1
+        
     # k-fold CV で平均化
     y_preds_test = sum(y_preds_test) / len(y_preds_test)
 

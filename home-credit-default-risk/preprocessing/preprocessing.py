@@ -62,6 +62,7 @@ def agg_dataframe_categorical( df_data, agg_column, base_column_name, method = [
             # ラベル情報のエンコード
             if( df_data_categorical[col].dtypes == "object" ):
                 label_encoder = LabelEncoder()
+                df_data_categorical[col].fillna('NA', inplace=True)
                 label_encoder.fit(list(df_data_categorical[col]))
                 df_data_categorical[col] = label_encoder.transform(list(df_data_categorical[col]))
 
@@ -106,7 +107,7 @@ def preprocessing( args ):
     one_hot_encode = args.onehot_encode
 
     #===========================
-    # 無用なデータを除外（結合前）
+    # 元データ
     #===========================
     # application_{train|test}
     if( args.feature_format ):
@@ -118,15 +119,53 @@ def preprocessing( args ):
 
     #df_application_train.drop(['FLAG_DOCUMENT_2', 'FLAG_DOCUMENT_4', 'FLAG_DOCUMENT_5', 'FLAG_DOCUMENT_7', 'FLAG_DOCUMENT_9', 'FLAG_DOCUMENT_10', 'FLAG_DOCUMENT_11', 'FLAG_DOCUMENT_12', 'FLAG_DOCUMENT_13', 'FLAG_DOCUMENT_14', 'FLAG_DOCUMENT_15', 'FLAG_DOCUMENT_16', 'FLAG_DOCUMENT_17', 'FLAG_DOCUMENT_18', 'FLAG_DOCUMENT_19', 'FLAG_DOCUMENT_20', 'FLAG_DOCUMENT_21'], axis=1, inplace=True)
     #df_application_test.drop(['FLAG_DOCUMENT_2', 'FLAG_DOCUMENT_4', 'FLAG_DOCUMENT_5', 'FLAG_DOCUMENT_7', 'FLAG_DOCUMENT_9', 'FLAG_DOCUMENT_10', 'FLAG_DOCUMENT_11', 'FLAG_DOCUMENT_12', 'FLAG_DOCUMENT_13', 'FLAG_DOCUMENT_14', 'FLAG_DOCUMENT_15', 'FLAG_DOCUMENT_16', 'FLAG_DOCUMENT_17', 'FLAG_DOCUMENT_18', 'FLAG_DOCUMENT_19', 'FLAG_DOCUMENT_20', 'FLAG_DOCUMENT_21'], axis=1, inplace=True)
+    if( args.onehot_encode ):
+        for col in df_application_train.columns:
+            if( df_application_train[col].dtypes == "object" ):
+                df_application_train[col] = df_application_train[col].fillna('NA')
+                df_application_test[col] = df_application_test[col].fillna('NA')
+
+        df_application_train = pd.get_dummies( df_application_train )
+        df_application_test = pd.get_dummies( df_application_test )
+
+        # one-hot ecode により、学習用データには存在するがテストデータにない列が生じるので、それらを align する
+        train_labels = df_application_train['TARGET']
+
+        # Align the training and testing data, keep only columns present in both dataframes
+        df_application_train, df_application_test = df_application_train.align(df_application_test, join = 'inner', axis = 1)
+
+        # Add the target back in
+        df_application_train['TARGET'] = train_labels
+
+    # 元データ
+    df_train = df_application_train
+    df_test = df_application_test
+
+    #----------------------------
+    # ドメイン知識に基づく特徴量
+    #----------------------------
+    if( args.domain_features ):
+        # CREDIT_INCOME_PERCENT: クライアントの収入に対する信用額の割合。
+        df_train['CREDIT_INCOME_PERCENT'] = df_train['AMT_CREDIT'] / df_train['AMT_INCOME_TOTAL']
+        df_test['CREDIT_INCOME_PERCENT'] = df_test['AMT_CREDIT'] / df_test['AMT_INCOME_TOTAL']
+
+        # ANNUITY_INCOME_PERCENT: クライアントの収入に対するローン年金の割合。
+        df_train['ANNUITY_INCOME_PERCENT'] = df_train['AMT_ANNUITY'] / df_train['AMT_INCOME_TOTAL']
+        df_test['ANNUITY_INCOME_PERCENT'] = df_test['AMT_ANNUITY'] / df_test['AMT_INCOME_TOTAL']
+
+        # CREDIT_TERM: お支払い期間を月単位で指定します。
+        df_train['CREDIT_TERM'] = df_train['AMT_ANNUITY'] / df_train['AMT_CREDIT']
+        df_test['CREDIT_TERM'] = df_test['AMT_ANNUITY'] / df_test['AMT_CREDIT']
+
+        # DAYS_EMPLOYED_PERCENT: クライアントの年齢に対する在職日数の割合。
+        df_train['DAYS_EMPLOYED_PERCENT'] = df_train['DAYS_EMPLOYED'] / df_train['DAYS_BIRTH']
+        df_test['DAYS_EMPLOYED_PERCENT'] = df_test['DAYS_EMPLOYED'] / df_test['DAYS_BIRTH']
+
     time_bar.update(10)
 
     #===========================
     # サブ構造の結合
     #===========================
-    # 元データ
-    df_train = df_application_train
-    df_test = df_application_test
-
     #---------------------------
     # bureau
     #---------------------------
@@ -314,10 +353,9 @@ def preprocessing( args ):
     # 目的変数と強い相関をもつ特徴量での多項式特徴量（PolynomialFeatures）
     #----------------------------
     if( args.polynomial_features ):
-        df_train_poly_features = df_train[ ['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH', 'TARGET'] ]
+        df_train_poly_features = df_train[ ['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH'] ]
+        df_train_poly_features_target = df_train[ ["TARGET"] ]
         df_test_poly_features = df_test[ ['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH'] ]
-        df_train_poly_features_target = df_train_poly_features[target_name]
-        df_train_poly_features = df_train_poly_features.drop(columns = [target_name])
 
         # Need to impute missing values
         imputer = SimpleImputer(strategy = 'median')
@@ -336,7 +374,6 @@ def preprocessing( args ):
             columns = poly_transformer.get_feature_names(['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3', 'DAYS_BIRTH'])
         )
         df_train_poly_features[target_name] = df_train_poly_features_target
-        print( df_train_poly_features.head() )
 
         # Put test features into dataframe
         df_test_poly_features = pd.DataFrame(
@@ -353,30 +390,12 @@ def preprocessing( args ):
         df_test = pd.merge( df_test, df_test_poly_features, on = 'SK_ID_CURR', how = 'left')
 
         # Align the dataframes
-        df_train, df_test = df_train.align(df_test, join = 'inner', axis = 1)
-
-    #----------------------------
-    # ドメイン知識に基づく特徴量
-    #----------------------------
-    if( args.domain_features ):
-        # CREDIT_INCOME_PERCENT: クライアントの収入に対する信用額の割合。
-        df_train['CREDIT_INCOME_PERCENT'] = df_train['AMT_CREDIT'] / df_train['AMT_INCOME_TOTAL']
-        df_test['CREDIT_INCOME_PERCENT'] = df_test['AMT_CREDIT'] / df_test['AMT_INCOME_TOTAL']
-
-        # ANNUITY_INCOME_PERCENT: クライアントの収入に対するローン年金の割合。
-        df_train['ANNUITY_INCOME_PERCENT'] = df_train['AMT_ANNUITY'] / df_train['AMT_INCOME_TOTAL']
-        df_test['ANNUITY_INCOME_PERCENT'] = df_test['AMT_ANNUITY'] / df_test['AMT_INCOME_TOTAL']
-
-        # CREDIT_TERM: お支払い期間を月単位で指定します。
-        df_train['CREDIT_TERM'] = df_train['AMT_ANNUITY'] / df_train['AMT_CREDIT']
-        df_test['CREDIT_TERM'] = df_test['AMT_ANNUITY'] / df_test['AMT_CREDIT']
-
-        # DAYS_EMPLOYED_PERCENT: クライアントの年齢に対する在職日数の割合。
-        df_train['DAYS_EMPLOYED_PERCENT'] = df_train['DAYS_EMPLOYED'] / df_train['DAYS_BIRTH']
-        df_test['DAYS_EMPLOYED_PERCENT'] = df_test['DAYS_EMPLOYED'] / df_test['DAYS_BIRTH']
+        df_train.drop(['TARGET_y'], axis=1, inplace=True)
+        df_train = df_train.rename( columns={'TARGET_x': 'TARGET'} )
+        #df_train, df_test = df_train.align(df_test, join = 'inner', axis = 1)
 
     time_bar.update(10)
-
+    
     #===========================
     # 無用なデータを除外（結合後）
     #===========================
@@ -402,6 +421,31 @@ def preprocessing( args ):
             continue
 
         #-----------------------------
+        # 欠損値の埋め合わせ
+        #-----------------------------
+        # NAN 値の埋め合わせ（平均値）
+        if( col in ["OWN_CAR_AGE"] ):
+            # データセット全体 df_data での平均値とする
+            df_data[col].fillna(np.mean(df_data[col]), inplace=True)
+            df_train[col].fillna(np.mean(df_data[col]), inplace=True)
+            df_test[col].fillna(np.mean(df_data[col]), inplace=True)
+        # NAN 値の埋め合わせ（ゼロ値）/ int 型
+        elif( df_train[col].dtypes in ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64"] ):
+            df_data[col].fillna(0, inplace=True)
+            df_train[col].fillna(0, inplace=True)
+            df_test[col].fillna(0, inplace=True)
+        # NAN 値の埋め合わせ（ゼロ値）/ float 型
+        elif( df_train[col].dtypes in ["float16", "float32", "float64", "float128"] ):
+            df_data[col].fillna(0.0, inplace=True)
+            df_train[col].fillna(0.0, inplace=True)
+            df_test[col].fillna(0.0, inplace=True)
+        # NAN 値の補完（None値）/ object 型
+        else:
+            df_data[col] = df_data[col].fillna('NA')
+            df_train[col] = df_train[col].fillna('NA')
+            df_test[col] = df_test[col].fillna('NA')
+
+        #-----------------------------
         # ラベル情報のエンコード
         #-----------------------------
         if( df_train[col].dtypes == "object" ):
@@ -412,27 +456,6 @@ def preprocessing( args ):
             label_encoder = LabelEncoder()
             label_encoder.fit(list(df_data[col]))
             df_test[col] = label_encoder.transform(list(df_test[col]))
-
-        #-----------------------------
-        # 欠損値の埋め合わせ
-        #-----------------------------
-        # NAN 値の埋め合わせ（平均値）
-        if( col in ["OWN_CAR_AGE"] ):
-            # データセット全体 df_data での平均値とする
-            df_train[col].fillna(np.mean(df_data[col]), inplace=True)
-            df_test[col].fillna(np.mean(df_data[col]), inplace=True)
-        # NAN 値の埋め合わせ（ゼロ値）/ int 型
-        elif( df_train[col].dtypes in ["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64"] ):
-            df_train[col].fillna(0, inplace=True)
-            df_test[col].fillna(0, inplace=True)
-        # NAN 値の埋め合わせ（ゼロ値）/ float 型
-        elif( df_train[col].dtypes in ["float16", "float32", "float64", "float128"] ):
-            df_train[col].fillna(0.0, inplace=True)
-            df_test[col].fillna(0.0, inplace=True)
-        # NAN 値の補完（None値）/ object 型
-        else:
-            df_train[col] = df_train[col].fillna('NA')
-            df_test[col] = df_test[col].fillna('NA')
 
         #-----------------------------
         # 正規化処理
@@ -448,10 +471,12 @@ def preprocessing( args ):
         #-----------------------------
         # 値が単一の特徴量をクレンジング
         #-----------------------------
+        """
         if( df_train[col].nunique() == 1 ):
             print( "remove {} : {}".format(col,df_train[col].nunique()) )
             df_train.drop([col], axis=1, inplace=True)
             df_test.drop([col], axis=1, inplace=True)
+        """
 
     time_bar.update(10)
     gc.disable()
