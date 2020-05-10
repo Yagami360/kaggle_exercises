@@ -19,6 +19,11 @@ git_pull_reset.sh
 */checkpoints/*
 */tensorboard/*
 */catboost_info/*
+*/*/datasets/*
+*/*/results/*
+*/*/checkpoints/*
+*/*/tensorboard/*
+*/*/catboost_info/*
 
 titanic/datasets/*
 titanic/results/*
@@ -43,4 +48,5 @@ dogs-vs-cats-redux-kernels-edition/keras_version/tensorboard/*
 bike-sharing-demand/datasets/*
 bike-sharing-demand/results/*
 bike-sharing-demand/catboost_info/*
+
 

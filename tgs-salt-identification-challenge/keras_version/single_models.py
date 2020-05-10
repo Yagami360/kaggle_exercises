@@ -9,6 +9,7 @@ import yaml
 from matplotlib import pyplot as plt
 import seaborn as sns
 from PIL import Image
+import cv2
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 # keras
@@ -27,7 +28,7 @@ from keras.preprocessing.image import ImageDataGenerator
 # 自作モジュール
 from dataset import load_dataset
 from models import KerasUnet
-from utils import save_checkpoint, load_checkpoint
+from utils import save_checkpoint, load_checkpoint, convert_rle
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -80,6 +81,18 @@ if __name__ == '__main__':
         os.mkdir(args.results_dir)
     if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
         os.mkdir(os.path.join(args.results_dir, args.exper_name))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "valid") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "valid"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "valid", "images") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "valid", "images"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "valid", "masks") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "valid", "masks"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "test"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test", "images") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "test", "images"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test", "masks") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "test", "masks"))
     if( args.train_mode in ["train"] ):
         if not( os.path.exists(args.save_checkpoints_dir) ):
             os.mkdir(args.save_checkpoints_dir)
@@ -99,13 +112,12 @@ if __name__ == '__main__':
     df_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
 
     # 学習用データセットとテスト用データセットの設定
-    X_train, y_train, X_test = load_dataset( dataset_dir = args.dataset_dir, image_height = args.image_height, image_width = args.image_width, n_channels = args.n_channels, n_samplings = args.n_samplings )
-    y_pred_train = np.zeros((len(y_train),))
+    X_train, y_train, X_test, image_names_train, image_names_test = load_dataset( dataset_dir = args.dataset_dir, image_height = args.image_height, image_width = args.image_width, n_channels = args.n_channels, n_samplings = args.n_samplings )
+    y_pred_train = np.zeros( y_train.shape )
     if( args.debug ):
         print( "X_train.shape : ", X_train.shape )
         print( "y_train.shape : ", y_train.shape )
         print( "X_test.shape : ", X_test.shape )
-        print( "y_pred_train.shape : ", y_pred_train.shape )
 
     #================================
     # 前処理
@@ -135,7 +147,6 @@ if __name__ == '__main__':
     #================================    
     # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
     kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
-    y_preds_test = []
     k = 0
     for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
         # seed 値の固定
@@ -195,6 +206,7 @@ if __name__ == '__main__':
         #--------------------
         if( args.classifier == "unet" ):
             model = KerasUnet(
+                image_height = args.image_height, image_width = args.image_width,
                 n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
                 use_valid = True, callbacks = callbacks, use_datagen = False, datagen = datagen, debug = args.debug
             )
@@ -216,13 +228,6 @@ if __name__ == '__main__':
             print( "loss [valid]={:0.5f}, accuracy [valid]={:0.5f}".format(eval_results_val[0], eval_results_val[1]) )
 
         #--------------------
-        # モデルの推論処理
-        #--------------------
-        y_pred_train[valid_index] = model.predict(X_valid_fold)
-        y_pred_test = model.predict(X_test)
-        y_preds_test.append(y_pred_test)
-    
-        #--------------------
         # 可視化処理
         #--------------------
         # 損失関数
@@ -235,14 +240,25 @@ if __name__ == '__main__':
         if( args.train_mode in ["train"] ):
             save_checkpoint( model.model, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_k{}_final'.format(k)) )
 
+        #--------------------
+        # モデルの推論処理
+        #--------------------
+        y_pred_train[valid_index] = model.predict(X_valid_fold)
+        print( "y_pred_train[valid_index].shape", y_pred_train[valid_index].shape )
+        for id in valid_index:
+            print( "id : ", id )
+            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "images", image_names_train[id] ), X_valid_fold[id,:,:,:] )
+            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "masks", image_names_train[id] ), y_pred_train[id,:,:] )
+
+        y_pred_test = model.predict(X_test)
+        for id in range(len(y_pred_test)):
+            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "images", image_names_test[id] ), X_test[id,:,:,:] )
+            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "masks", image_names_test[id] ), y_pred_test[id,:,:] )
+
         k += 1
 
-    # k-fold CV で平均化
-    y_preds_test = sum(y_preds_test) / len(y_preds_test)
-
-    # accuracy
-    accuracy = (y_train == y_pred_train).sum()/len(y_pred_train)
-    print( "accuracy [k-fold CV train-valid] : {:0.5f}".format(accuracy) )
+    # IoU
+    pass
 
     #================================
     # 可視化処理
@@ -253,8 +269,13 @@ if __name__ == '__main__':
     # Kaggle API での submit
     #================================
     # 提出用データに値を設定
-    y_sub = list(map(int, y_preds_test))
-    df_submission['Label'] = y_sub
+    y_sub = []
+    for i in range(len(y_pred_test)):
+        rle = convert_rle( y_pred_test[i] )
+        print( "rle : ", rle )
+        y_sub.append( rle )
+
+    df_submission['rle_mask'] = y_sub
     df_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
     if( args.submit ):
         # Kaggle-API で submit
