@@ -21,7 +21,7 @@ import keras.backend.tensorflow_backend as KTF
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold
 from keras.utils import to_categorical
 from keras.preprocessing.image import ImageDataGenerator
 
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
     parser.add_argument("--classifier", choices=["unet"], default="unet", help="分類器モデルの種類")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
-    parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
+    parser.add_argument('--load_checkpoints_paths', action='append', help="モデルの読み込みファイルのパス")
     parser.add_argument("--n_epoches", type=int, default=10, help="エポック数")    
     parser.add_argument('--batch_size', type=int, default=32, help="バッチサイズ")
     parser.add_argument('--lr', type=float, default=0.001, help="学習率")
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     parser.add_argument("--n_samplings", type=int, default=-1, help="ラベル数")    
 
     parser.add_argument('--data_augument', action='store_false', help="Data Augumentation を行うか否か")
-    parser.add_argument("--val_rate", type=float, default=0.25)
+    parser.add_argument("--n_splits", type=int, default=4, help="CV での学習用データセットの分割数")
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="cpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--submit', action='store_true')
@@ -162,82 +162,97 @@ if __name__ == '__main__':
     #================================
     # モデルの学習 & 推論
     #================================    
-    X_train, X_valid, y_train, y_valid = train_test_split( X_train, y_train, test_size=args.val_rate, random_state=args.seed )
-    if( args.debug ):
-        print( "X_train.shape : ", X_train.shape )
-        print( "X_valid.shape : ", X_valid.shape )
-        print( "y_train.shape : ", y_train.shape )
-        print( "y_valid.shape : ", y_valid.shape )
-
-    #--------------------
-    # keras の call back
-    #--------------------
-    """
-    # 各エポック終了毎のモデルのチェックポイント保存用 call back
-    callback_checkpoint = ModelCheckpoint( 
-        filepath = os.path.join(args.save_checkpoints_dir, args.exper_name, "ep{epoch:03d}.hdf5" ), 
-        monitor = 'loss', 
-        verbose = 1, 
-        save_weights_only = True,   # 
-        save_best_only = False,     # 精度がよくなった時だけ保存するかどうか指定。False の場合は毎 epoch 毎保存．
-        mode = 'auto',              # 
-        period = 1                  # 何エポックごとに保存するか
-    )
-    callbacks = [ callback_checkpoint ]
-    """
-    callbacks = None
-
-    #--------------------
-    # モデルの定義
-    #--------------------
-    if( args.classifier == "unet" ):
-        model = KerasUnet(
-            image_height = args.image_height, image_width = args.image_width, n_in_channels = args.n_channels,
-            n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
-            use_valid = True, callbacks = callbacks, use_datagen = True, datagen = datagen, debug = args.debug
+    # k-hold cross validation で、学習用データセットを学習用と検証用に分割したもので評価
+    kf = KFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
+    for fold_id, (train_index, valid_index) in enumerate(kf.split(X_train)):
+        # seed 値の固定
+        np.random.seed(args.seed+fold_id)
+        random.seed(args.seed+fold_id)
+        
+        #--------------------
+        # keras の call back
+        #--------------------
+        """
+        # 各エポック終了毎のモデルのチェックポイント保存用 call back
+        callback_checkpoint = ModelCheckpoint( 
+            filepath = os.path.join(args.save_checkpoints_dir, args.exper_name, "ep{epoch:03d}.hdf5" ), 
+            monitor = 'loss', 
+            verbose = 1, 
+            save_weights_only = True,   # 
+            save_best_only = False,     # 精度がよくなった時だけ保存するかどうか指定。False の場合は毎 epoch 毎保存．
+            mode = 'auto',              # 
+            period = 1                  # 何エポックごとに保存するか
         )
+        callbacks = [ callback_checkpoint ]
+        """
+        callbacks = None
 
-    # モデルを読み込む
-    if( args.load_checkpoints_path != '' and os.path.exists(args.load_checkpoints_path) ):
-        load_checkpoint(model.model, args.load_checkpoints_path )
+        #--------------------
+        # データセットの分割
+        #--------------------
+        X_train_fold, X_valid_fold = X_train[train_index], X_train[valid_index]
+        y_train_fold, y_valid_fold = y_train[train_index], y_train[valid_index]
+        if( args.debug ):
+            print( "X_train_fold.shape : ", X_train_fold.shape )
+            print( "X_valid_fold.shape : ", X_valid_fold.shape )
+            print( "y_train_fold.shape : ", y_train_fold.shape )
+            print( "y_valid_fold.shape : ", y_valid_fold.shape )
+            print( "fold_id : ", fold_id )
+            print( "train_index : ", train_index )
+            print( "valid_index : ", valid_index )
 
-    #--------------------
-    # モデルの学習処理
-    #--------------------
-    if( args.train_mode in ["train"] ):
-        model.fit(X_train, y_train, X_valid, y_valid)
-    elif( args.train_mode in ["eval"] ):
-        eval_results_train = model.evaluate( X_train, y_train )
-        eval_results_val = model.evaluate( X_valid, y_valid )
-        print( "loss [train]={:0.5f}, accuracy [train]={:0.5f}".format(eval_results_train[0], eval_results_train[1]) )
-        print( "loss [valid]={:0.5f}, accuracy [valid]={:0.5f}".format(eval_results_val[0], eval_results_val[1]) )
+        #--------------------
+        # モデルの定義
+        #--------------------
+        if( args.classifier == "unet" ):
+            model = KerasUnet(
+                image_height = args.image_height, image_width = args.image_width, n_in_channels = args.n_channels,
+                n_epoches = args.n_epoches, batch_size = args.batch_size, lr = args.lr, beta1 = args.beta1, beta2 = args.beta2,
+                use_valid = True, callbacks = callbacks, use_datagen = True, datagen = datagen, debug = args.debug
+            )
 
-    #--------------------
-    # 可視化処理
-    #--------------------
-    # 損失関数
-    if( args.train_mode in ["train"] ):
-        model.plot_loss( os.path.join(args.results_dir, args.exper_name, "losees.png" ) )
+        # モデルを読み込む
+        if( args.load_checkpoints_paths != None ):
+            if not ( args.load_checkpoints_paths[fold_id] == '' and os.path.exists(args.load_checkpoints_paths[fold_id]) ):
+                load_checkpoint(model.model, args.load_checkpoints_paths[fold_id] )
 
-    #--------------------
-    # モデルの保存
-    #--------------------
-    if( args.train_mode in ["train"] ):
-        save_checkpoint( model.model, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final') )
+        #--------------------
+        # モデルの学習処理
+        #--------------------
+        if( args.train_mode in ["train"] ):
+            model.fit(X_train_fold, y_train_fold, X_valid_fold, y_valid_fold)
+        elif( args.train_mode in ["eval"] ):
+            eval_results_train = model.evaluate( X_train_fold, y_train_fold )
+            eval_results_val = model.evaluate( X_valid_fold, y_valid_fold )
+            print( "loss [train]={:0.5f}, accuracy [train]={:0.5f}".format(eval_results_train[0], eval_results_train[1]) )
+            print( "loss [valid]={:0.5f}, accuracy [valid]={:0.5f}".format(eval_results_val[0], eval_results_val[1]) )
 
-    #--------------------
-    # モデルの推論処理
-    #--------------------
-    y_pred_train = model.predict(X_valid)
-    print( "y_pred_train.shape", y_pred_train.shape )
-    for id in range(len(y_pred_train)):
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "images", image_names_train[id] ), X_train.squeeze()[id,:,:] * 255 )
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "masks", image_names_train[id] ), y_pred_train.squeeze()[id,:,:] * 255 )
+        #--------------------
+        # 可視化処理
+        #--------------------
+        # 損失関数
+        if( args.train_mode in ["train"] ):
+            model.plot_loss( os.path.join(args.results_dir, args.exper_name, "losees_k{}.png".format(fold_id) ) )
 
-    y_pred_test = model.predict(X_test)
-    for id in range(len(y_pred_test)):
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "images", image_names_test[id] ), X_test.squeeze()[id,:,:] * 255 )
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "masks", image_names_test[id] ), y_pred_test.squeeze()[id,:,:] * 255 )
+        #--------------------
+        # モデルの保存
+        #--------------------
+        if( args.train_mode in ["train"] ):
+            save_checkpoint( model.model, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_k{}_final'.format(fold_id)) )
+
+        #--------------------
+        # モデルの推論処理
+        #--------------------
+        y_pred_train[valid_index] = model.predict(X_valid_fold)
+        print( "y_pred_train[valid_index].shape", y_pred_train[valid_index].shape )
+        for id in valid_index:
+            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "images", image_names_train[id] * 255 ), X_train.squeeze()[id,:,:] )
+            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "masks", image_names_train[id] * 255 ), y_pred_train.squeeze()[id,:,:] )
+
+        y_pred_test = model.predict(X_test)
+        for id in range(len(y_pred_test)):
+            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "images", image_names_test[id] * 255 ), X_test.squeeze()[id,:,:] )
+            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "masks", image_names_test[id] * 255 ), y_pred_test.squeeze()[id,:,:] )
 
     # IoU
     pass
@@ -257,7 +272,7 @@ if __name__ == '__main__':
         print( "rle : ", rle )
         y_sub.append( rle )
 
-    df_submission['rle_mask'][0:len(y_sub)] = y_sub
+    df_submission['rle_mask'] = y_sub
     df_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file), index=False)
     if( args.submit ):
         # Kaggle-API で submit
