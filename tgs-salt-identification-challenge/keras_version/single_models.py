@@ -29,6 +29,7 @@ from keras.preprocessing.image import ImageDataGenerator
 from dataset import load_dataset
 from models import KerasUnet
 from utils import save_checkpoint, load_checkpoint, convert_rle
+from utils import iou_metric, iou_metric_batch
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -41,11 +42,13 @@ if __name__ == '__main__':
     parser.add_argument("--classifier", choices=["unet"], default="unet", help="分類器モデルの種類")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
-    parser.add_argument("--n_epoches", type=int, default=10, help="エポック数")    
+    parser.add_argument("--n_epoches", type=int, default=200, help="エポック数")    
     parser.add_argument('--batch_size', type=int, default=32, help="バッチサイズ")
     parser.add_argument('--lr', type=float, default=0.001, help="学習率")
     parser.add_argument('--beta1', type=float, default=0.5, help="学習率の減衰率")
     parser.add_argument('--beta2', type=float, default=0.999, help="学習率の減衰率")
+    parser.add_argument('--image_height_org', type=int, default=101, help="入力画像の高さ（pixel単位）")
+    parser.add_argument('--image_width_org', type=int, default=101, help="入力画像の幅（pixel単位）")
     parser.add_argument('--image_height', type=int, default=128, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=128, help="入力画像の幅（pixel単位）")
     parser.add_argument("--n_channels", type=int, default=1, help="チャンネル数")    
@@ -64,12 +67,9 @@ if __name__ == '__main__':
         if( args.train_mode in ["test", "eval"] ):
             args.exper_name = "test_" + args.exper_name
         args.exper_name += "_" + args.classifier
-        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc"] ):
-            args.exper_name += "_ep" + str(args.n_epoches)
-            args.exper_name += "_b" + str(args.batch_size)
-        if( args.classifier in ["mlp", "resnet50", "pretrained_resnet50", "pretrained_resnet50_fc"] ):
-            args.exper_name += "_lr{}".format(args.lr)
-        args.exper_name += "_k" + str(args.n_splits)
+        args.exper_name += "_ep" + str(args.n_epoches)
+        args.exper_name += "_b" + str(args.batch_size)
+        args.exper_name += "_lr{}".format(args.lr)
         if( args.data_augument ):
             args.exper_name += "_da"
 
@@ -112,7 +112,14 @@ if __name__ == '__main__':
     df_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
 
     # 学習用データセットとテスト用データセットの設定
-    X_train, y_train, X_test, image_names_train, image_names_test = load_dataset( dataset_dir = args.dataset_dir, image_height = args.image_height, image_width = args.image_width, n_channels = args.n_channels, n_samplings = args.n_samplings )
+    X_train, y_train, X_test, image_names_train, image_names_test \
+    = load_dataset( 
+        dataset_dir = args.dataset_dir, 
+        image_height_org = args.image_height, image_width_org = args.image_width_org, 
+        image_height = args.image_height, image_width = args.image_width, n_channels = args.n_channels, 
+        n_samplings = args.n_samplings
+    )
+
     y_pred_train = np.zeros( y_train.shape )
     if( args.debug ):
         print( "X_train.shape : ", X_train.shape )
@@ -133,8 +140,8 @@ if __name__ == '__main__':
         ax.set_yticklabels([])
         ax.set_xticklabels([])
 
-    plt.suptitle("images and masks\nGreen: salt")
-    plt.savefig( os.path.join(args.results_dir, args.exper_name, "images_and_masks.png"), dpi = 300, bbox_inches = 'tight' )
+    plt.suptitle("images and masks [train]\nGreen: salt")
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "images_and_masks_train.png"), dpi = 300, bbox_inches = 'tight' )
 
     #================================
     # 前処理
@@ -162,7 +169,8 @@ if __name__ == '__main__':
     #================================
     # モデルの学習 & 推論
     #================================    
-    X_train, X_valid, y_train, y_valid = train_test_split( X_train, y_train, test_size=args.val_rate, random_state=args.seed )
+    X_train, X_valid, y_train, y_valid, image_names_train, image_names_valid = \
+        train_test_split( X_train, y_train, image_names_train, test_size=args.val_rate, random_state=args.seed )
     if( args.debug ):
         print( "X_train.shape : ", X_train.shape )
         print( "X_valid.shape : ", X_valid.shape )
@@ -172,20 +180,17 @@ if __name__ == '__main__':
     #--------------------
     # keras の call back
     #--------------------
-    """
     # 各エポック終了毎のモデルのチェックポイント保存用 call back
     callback_checkpoint = ModelCheckpoint( 
-        filepath = os.path.join(args.save_checkpoints_dir, args.exper_name, "ep{epoch:03d}.hdf5" ), 
+        filepath = os.path.join(args.save_checkpoints_dir, args.exper_name, "model_ep{epoch:03d}.hdf5" ), 
         monitor = 'loss', 
         verbose = 1, 
         save_weights_only = True,   # 
         save_best_only = False,     # 精度がよくなった時だけ保存するかどうか指定。False の場合は毎 epoch 毎保存．
         mode = 'auto',              # 
-        period = 1                  # 何エポックごとに保存するか
+        period = 10                 # 何エポックごとに保存するか
     )
     callbacks = [ callback_checkpoint ]
-    """
-    callbacks = None
 
     #--------------------
     # モデルの定義
@@ -213,13 +218,6 @@ if __name__ == '__main__':
         print( "loss [valid]={:0.5f}, accuracy [valid]={:0.5f}".format(eval_results_val[0], eval_results_val[1]) )
 
     #--------------------
-    # 可視化処理
-    #--------------------
-    # 損失関数
-    if( args.train_mode in ["train"] ):
-        model.plot_loss( os.path.join(args.results_dir, args.exper_name, "losees.png" ) )
-
-    #--------------------
     # モデルの保存
     #--------------------
     if( args.train_mode in ["train"] ):
@@ -230,31 +228,89 @@ if __name__ == '__main__':
     #--------------------
     y_pred_train = model.predict(X_valid)
     print( "y_pred_train.shape", y_pred_train.shape )
-    for id in range(len(y_pred_train)):
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "images", image_names_train[id] ), X_train.squeeze()[id,:,:] * 255 )
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "masks", image_names_train[id] ), y_pred_train.squeeze()[id,:,:] * 255 )
+    n_images = 10
+    for i, name in enumerate(image_names_valid[0:n_images-1]):
+        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "images", name ), X_train.squeeze()[i,:,:] * 255 )
+        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "masks", name ), y_pred_train.squeeze()[i,:,:] * 255 )
 
     y_pred_test = model.predict(X_test)
-    for id in range(len(y_pred_test)):
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "images", image_names_test[id] ), X_test.squeeze()[id,:,:] * 255 )
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "masks", image_names_test[id] ), y_pred_test.squeeze()[id,:,:] * 255 )
-
-    # IoU
-    pass
+    for i, name in enumerate(image_names_test[0:n_images-1]):
+        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "images", name ), X_test.squeeze()[i,:,:] * 255 )
+        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "masks", name ), y_pred_test.squeeze()[i,:,:] * 255 )
 
     #================================
     # 可視化処理
     #================================
-    pass
+    # 損失関数
+    if( args.train_mode in ["train"] ):
+        model.plot_loss( os.path.join(args.results_dir, args.exper_name, "losees.png" ) )
+
+    # IoU
+    thresholds = np.linspace(0, 1, 50)
+    ious = np.array( [iou_metric_batch(y_valid, np.int32(y_pred_train > threshold)) for threshold in thresholds] )
+
+    threshold_best_index = np.argmax(ious[9:-10]) + 9
+    iou_best = ious[threshold_best_index]
+    threshold_best = thresholds[threshold_best_index]   # ?
+
+    fig, axs = plt.subplots()
+    axs.plot(thresholds, ious)
+    axs.plot(threshold_best, iou_best, "xr", label="Best threshold")
+    plt.xlabel("Threshold")
+    plt.ylabel("IoU")
+    plt.title("Threshold vs IoU ({}, {})".format(threshold_best, iou_best))
+    plt.grid()
+    plt.legend()
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "IoU.png"), dpi = 300, bbox_inches = 'tight' )
+
+    # 元画像と生成マスク画像の重ね合わせ（test）
+    max_images = 60
+    grid_width = 15
+    grid_height = int(max_images / grid_width)
+    fig, axs = plt.subplots(grid_height, grid_width, figsize=(grid_width, grid_height))
+    for i, name in enumerate(image_names_test[0:max_images]):
+        img = X_test[i]
+        mask = np.array(np.round(y_pred_test[i] > threshold_best), dtype=np.float32)
+        ax = axs[int(i / grid_width), i % grid_width]
+        ax.imshow(img.squeeze(), cmap="Greys")
+        ax.imshow(mask.squeeze(), alpha=0.3, cmap="Greens")
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+
+    plt.suptitle("images and masks [test]\nGreen: salt")
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "images_and_masks_test.png"), dpi = 300, bbox_inches = 'tight' )
+
+    # 元画像と生成マスク画像の重ね合わせ（valid）
+    max_images = 60
+    grid_width = 15
+    grid_height = int(max_images / grid_width)
+    fig, axs = plt.subplots(grid_height, grid_width, figsize=(grid_width, grid_height))
+    for i, name in enumerate(image_names_valid[0:max_images]):
+        img = X_valid[i]
+        mask = y_valid[i]
+        pred_mask = np.array(np.round(y_pred_train[i] > threshold_best), dtype=np.float32)
+        ax = axs[int(i / grid_width), i % grid_width]
+        ax.imshow(img.squeeze(), cmap="Greys")
+        ax.imshow(mask.squeeze(), alpha=0.3, cmap="Greens")
+        ax.imshow(pred_mask.squeeze(), alpha=0.3, cmap="OrRd")
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+
+    plt.suptitle("images and masks [train]\nGreen: salt [correct], Red: salt [predict]")
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "images_and_masks_valid.png"), dpi = 300, bbox_inches = 'tight' )
 
     #================================
     # Kaggle API での submit
     #================================
     # 提出用データに値を設定
-    y_sub = []
+    y_pred_test_org = np.zeros( (len(y_pred_test), args.image_height_org, args.image_width_org), dtype=np.float32 )
     for i in range(len(y_pred_test)):
-        rle = convert_rle( y_pred_test[i] )
-        print( "rle : ", rle )
+        y_pred_test_org[i] = cv2.resize( y_pred_test[i].squeeze(), (args.image_height_org, args.image_width_org), interpolation = cv2.INTER_NEAREST )
+
+    y_sub = []
+    for i in range(len(y_pred_test_org)):
+        #rle = convert_rle( y_pred_test_org[i] )
+        rle = convert_rle( np.round( y_pred_test_org[i] > threshold_best ) )  # ?
         y_sub.append( rle )
 
     df_submission['rle_mask'][0:len(y_sub)] = y_sub

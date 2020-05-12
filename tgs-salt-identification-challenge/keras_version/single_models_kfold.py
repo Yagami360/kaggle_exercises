@@ -29,6 +29,7 @@ from keras.preprocessing.image import ImageDataGenerator
 from dataset import load_dataset
 from models import KerasUnet
 from utils import save_checkpoint, load_checkpoint, convert_rle
+from utils import iou_metric, iou_metric_batch
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

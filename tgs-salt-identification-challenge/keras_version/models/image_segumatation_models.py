@@ -274,7 +274,7 @@ class KerasUnet():
         axis.plot(self.evals_result['loss'], label='train')
         axis.plot(self.evals_result['val_loss'], label='valid')
 
-        plt.xlabel('iters')
+        plt.xlabel('epoches')
         plt.ylabel("loss")
         plt.xlim( [0,self.n_epoches+1] )
         plt.grid()
@@ -288,7 +288,7 @@ class KerasUnet():
         axis.plot(self.evals_result['accuracy'], label='train')
         axis.plot(self.evals_result['val_accuracy'], label='valid')
 
-        plt.xlabel('iters')
+        plt.xlabel('epoches')
         plt.ylabel("accuracy")
         plt.xlim( [0,self.n_epoches+1] )
         plt.grid()
