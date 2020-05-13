@@ -18,8 +18,6 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from keras.utils import to_categorical
-from keras.preprocessing.image import ImageDataGenerator
 
 # PyTorch
 import torch
@@ -159,7 +157,7 @@ if __name__ == '__main__':
 
     #dloader_train = TGSSaltDataLoader(ds_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
     #dloader_test = TGSSaltDataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, n_workers=args.n_workers )
-    dloader_train = torch.utils.data.DataLoader(ds_train, batch_size=args.batch_size, shuffle=False, num_workers = args.n_workers, pin_memory = True )
+    dloader_train = torch.utils.data.DataLoader(ds_train, batch_size=args.batch_size, shuffle=True, num_workers = args.n_workers, pin_memory = True )
     dloader_test = torch.utils.data.DataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, num_workers = args.n_workers, pin_memory = True )
 
     """
@@ -239,22 +237,27 @@ if __name__ == '__main__':
     #================================
     # loss 関数の設定
     #================================
-    loss_fn = nn.CrossEntropyLoss()
+    #loss_fn = nn.BCELoss()
+    loss_fn = nn.BCEWithLogitsLoss()
+    #loss_fn = nn.MSELoss()
 
     #================================
-    # モデルの学習 & 推論
+    # モデルの学習
     #================================    
     if( args.train_mode == "train" ):
         print("Starting Training Loop...")
         n_print = 1
+        step = 0
         for epoch in tqdm( range(args.n_epoches), desc = "Epoches" ):
             # DataLoader から 1minibatch 分取り出し、ミニバッチ処理
-            for step, inputs in enumerate( tqdm( dloader_train, desc = "minbatch iters" ) ):
+            for iter, inputs in enumerate( tqdm( dloader_train, desc = "minbatch iters" ) ):
                 model.train()            
 
                 # 一番最後のミニバッチループで、バッチサイズに満たない場合は無視する（後の計算で、shape の不一致をおこすため）
-                if inputs["image_name"].shape[0] != args.batch_size:
+                if inputs["image"].shape[0] != args.batch_size:
                     break
+
+                step += 1
 
                 # ミニバッチデータを GPU へ転送
                 image_name = inputs["image_name"]
@@ -266,6 +269,10 @@ if __name__ == '__main__':
                     print( "mask.shape : ", mask.shape )
                     print( "depth.shape : ", depth.shape )
 
+                    print( "image.dtype : ", image.dtype )
+                    print( "mask.dtype : ", mask.dtype )
+                    print( "depth.dtype : ", depth.dtype )
+
                 #====================================================
                 # 学習処理
                 #====================================================
@@ -275,6 +282,7 @@ if __name__ == '__main__':
                 output = model( image )
                 if( args.debug and n_print > 0 ):
                     print( "output.shape :", output.shape )
+                    print( "output.dtype :", output.dtype )
 
                 #----------------------------------------------------
                 # 損失関数を計算する
@@ -296,13 +304,16 @@ if __name__ == '__main__':
                 #====================================================
                 # 学習過程の表示
                 #====================================================
-                board_train.add_scalar('Model/loss', loss.item(), step+1)
-                print( "epoches={}, loss={:.5f}".format(epoch+1, loss) )
+                if( step == 0 or ( step % 50 == 0 ) ):
+                    board_train.add_scalar('Model/loss', loss.item(), step+1)
+                    print( "epoches={}, loss={:.5f}".format(epoch+1, loss) )
 
-                visuals = [
-                    [image, mask, output],
-                ]
-                board_add_images(board_train, 'images', visuals, epoch+1)
+                    visuals = [
+                        [image, mask, output],
+                    ]
+                    board_add_images(board_train, 'images', visuals, epoch+1)
+
+                n_print -= 1
 
             #====================================================
             # モデルの保存
@@ -310,15 +321,34 @@ if __name__ == '__main__':
             save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_ep%08d.pth' % (epoch+1)) )
             save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final.pth') )
             print( "saved checkpoints" )
-            n_print -= 1
 
         save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final.pth') )
         print("Finished Training Loop.")
 
     #================================
-    # 推論処理
+    # モデルの推論処理
     #================================
-    pass
+    print("Starting Test Loop...")
+    n_print = 1
+    y_pred_test = []
+    model.eval()
+    for step, inputs in enumerate( tqdm( dloader_test, desc = "Samplings" ) ):
+        if inputs["image"].shape[0] != args.batch_size:
+            break
+
+        image_name = inputs["image_name"]
+        image = inputs["image"].to(device)
+        mask = inputs["mask"].to(device)
+        depth = inputs["depth"].to(device)
+
+        # 生成器 G の 推論処理
+        with torch.no_grad():
+            output = model( image )
+            y_pred_test.append( output )
+            if( args.debug and n_print > 0 ):
+                print( "output.shape :", output.shape )
+
+        n_print -= 1
 
     #================================
     # 可視化処理

@@ -11,10 +11,6 @@ from skimage.transform import resize
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 
-# keras
-import keras
-from keras.utils import to_categorical
-
 # PyTorch
 import torch
 import torch.utils.data as data
@@ -112,14 +108,17 @@ def load_dataset(
 
 
 class TGSSaltDataset(data.Dataset):
-    def __init__(self, args, root_dir, datamode = "train", mean = (0.5, 0.5, 0.5), std = (0.5, 0.5, 0.5), data_augument = False, debug = False ):
+    def __init__(self, args, root_dir, datamode = "train", data_augument = False, debug = False ):
         super(TGSSaltDataset, self).__init__()
         self.args = args
         self.image_height = args.image_height
         self.image_width = args.image_width
         self.debug = debug
         self.dataset_dir = os.path.join( root_dir, datamode )
-        self.image_names = sorted( [f for f in os.listdir(self.dataset_dir) if f.endswith(IMG_EXTENSIONS)], key=lambda s: int(re.search(r'\d+', s).group()) )
+        self.image_names = sorted( [f for f in os.listdir( os.path.join(self.dataset_dir, "images")) if f.endswith(IMG_EXTENSIONS)] )
+
+        mean = [ 0.5 for i in range(args.n_channels) ]
+        std = [ 0.5 for i in range(args.n_channels) ]
 
         # transform
         if( data_augument ):
@@ -167,16 +166,17 @@ class TGSSaltDataset(data.Dataset):
         image_name = self.image_names[index]
 
         # image
-        image = Image.open(os.path.join(self.dataset_dir, image_name)).convert('L')
+        image = Image.open(os.path.join(self.dataset_dir, "images", image_name)).convert('L')
         image = self.transform(image)
 
         # mask
-        mask = Image.open(os.path.join(self.dataset_dir, image_name)).convert('L')
+        mask = Image.open(os.path.join(self.dataset_dir, "masks", image_name)).convert('L')
         mask = self.transform(mask)
 
         # depth
-        depth = self.df_depth.loc[image_name.split(".png"),"z"]
-        depth = torch.from_numpy( depth )
+        depth = np.zeros( (mask.shape[0], 1) )
+        depth[:,0] = np.array( self.df_depth.loc[image_name.split(".png")[0],"z"] )
+        depth = torch.from_numpy( depth[:,0] ).float()
 
         results_dict = {
             "image_name" : image_name,

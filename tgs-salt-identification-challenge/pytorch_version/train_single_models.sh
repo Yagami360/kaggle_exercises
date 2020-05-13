@@ -10,15 +10,17 @@ mkdir -p _logs
 MODEL_TYPE=unet
 N_EPOCHES=200
 BATCH_SIZE=32
+EXPER_NAME=debug
+rm -rf tensorboard/${EXPER_NAME}
 
 python single_models.py \
-    --exper_name debug \
+    --exper_name ${EXPER_NAME} \
     --train_mode train \
     --model_type ${MODEL_TYPE} \
     --n_epoches ${N_EPOCHES} --batch_size ${BATCH_SIZE} \
     --debug
 
-if [ $1 = "poweroff" ]; then
+if [ $1 = "poweroff" ] ; then
     sudo poweroff
     sudo shutdown -h now
 fi
