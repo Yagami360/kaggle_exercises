@@ -4,6 +4,7 @@ import random
 import pandas as pd
 import re
 import math
+from PIL import Image, ImageDraw, ImageOps
 import cv2
 from skimage.transform import resize
 
@@ -12,8 +13,13 @@ from sklearn.preprocessing import MinMaxScaler
 
 # keras
 import keras
-from keras.utils import Sequence
 from keras.utils import to_categorical
+
+# PyTorch
+import torch
+import torch.utils.data as data
+import torchvision.transforms as transforms
+from torchvision.utils import save_image
 
 IMG_EXTENSIONS = (
     '.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif',
@@ -103,3 +109,104 @@ def load_dataset(
     """
 
     return X_train_img, y_train_mask, X_test_img, X_train_depth, X_test_depth, train_image_names, test_image_names
+
+
+class TGSSaltDataset(data.Dataset):
+    def __init__(self, args, root_dir, datamode = "train", mean = (0.5, 0.5, 0.5), std = (0.5, 0.5, 0.5), data_augument = False, debug = False ):
+        super(TGSSaltDataset, self).__init__()
+        self.args = args
+        self.image_height = args.image_height
+        self.image_width = args.image_width
+        self.debug = debug
+        self.dataset_dir = os.path.join( root_dir, datamode )
+        self.image_names = sorted( [f for f in os.listdir(self.dataset_dir) if f.endswith(IMG_EXTENSIONS)], key=lambda s: int(re.search(r'\d+', s).group()) )
+
+        # transform
+        if( data_augument ):
+            self.transform = transforms.Compose(
+                [
+                    transforms.RandomResizedCrop( (args.image_height, args.image_width), scale=(0.5, 1.0)),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.RandomAffine( degrees = (-5,5),  translate=(0.15, 0.05), scale = (0.5,1.25), resample=Image.BICUBIC ),
+                    transforms.ToTensor(),   # Tensor に変換
+                    transforms.Normalize( mean, std ),
+                ]
+            )
+        else:
+            self.transform = transforms.Compose(
+                [
+                    transforms.Resize( (args.image_height, args.image_width), interpolation=Image.LANCZOS ),
+                    transforms.CenterCrop( size = (args.image_height, args.image_width) ),
+                    transforms.ToTensor(),   # Tensor に変換
+                    transforms.Normalize( mean, std ),
+                ]
+            )
+
+        #
+        self.df_train = pd.read_csv( os.path.join(root_dir, "train.csv"), index_col='id' )
+
+        # depth
+        self.df_depth = pd.read_csv( os.path.join(root_dir, "depths.csv"), index_col='id' )
+        scaler = StandardScaler()
+        scaler.fit( self.df_depth["z"].values.reshape(-1,1) )
+        self.df_depth["z"] = scaler.transform( self.df_depth["z"].values.reshape(-1,1) )
+
+        if( self.debug ):
+            print( "self.dataset_dir :", self.dataset_dir)
+            print( "len(self.image_names) :", len(self.image_names))
+            print( "self.image_names[0:5] :", self.image_names[0:5])
+            print( "self.df_train.head() \n:", self.df_train.head())
+            print( "self.df_depth \n:", self.df_depth)
+
+        return
+
+    def __len__(self):
+        return len(self.image_names)
+
+    def __getitem__(self, index):
+        image_name = self.image_names[index]
+
+        # image
+        image = Image.open(os.path.join(self.dataset_dir, image_name)).convert('L')
+        image = self.transform(image)
+
+        # mask
+        mask = Image.open(os.path.join(self.dataset_dir, image_name)).convert('L')
+        mask = self.transform(mask)
+
+        # depth
+        depth = self.df_depth.loc[image_name.split(".png"),"z"]
+        depth = torch.from_numpy( depth )
+
+        results_dict = {
+            "image_name" : image_name,
+            "image" : image,
+            "mask" : mask,
+            "depth" : depth,
+        }
+        return results_dict
+
+
+class TGSSaltDataLoader(object):
+    def __init__(self, dataset, batch_size = 1, shuffle = True, n_workers = 4, pin_memory = True):
+        super(TGSSaltDataLoader, self).__init__()
+        self.data_loader = torch.utils.data.DataLoader(
+                dataset, 
+                batch_size = batch_size, 
+                shuffle = shuffle,
+                num_workers = n_workers,
+                pin_memory = pin_memory,
+        )
+
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.data_iter = self.data_loader.__iter__()
+
+    def next_batch(self):
+        try:
+            batch = self.data_iter.__next__()
+        except StopIteration:
+            self.data_iter = self.data_loader.__iter__()
+            batch = self.data_iter.__next__()
+
+        return batch

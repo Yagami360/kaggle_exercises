@@ -22,7 +22,7 @@ Kaggle の練習用レポジトリ
     - [[Playground] Dogs vs. Cats Redux: Kernels Edition](https://github.com/Yagami360/kaggle_exercises/tree/master/dogs-vs-cats-redux-kernels-edition)
 
 - セマンティクス・セグメンテーション
-    - [Featured] TGS Salt Identification Challenge
+    - [[Featured] TGS Salt Identification Challenge](https://github.com/Yagami360/kaggle_exercises/tree/master/tgs-salt-identification-challenge)
     - [[Research] iMaterialist (Fashion) 2019 at FGVC6](https://github.com/Yagami360/kaggle_exercises/tree/master/imaterialist-fashion-2019-FGVC6)
     - [Research] iMaterialist (Fashion) 2020 at FGVC6
 
