@@ -111,6 +111,7 @@ class TGSSaltDataset(data.Dataset):
     def __init__(self, args, root_dir, datamode = "train", data_augument = False, debug = False ):
         super(TGSSaltDataset, self).__init__()
         self.args = args
+        self.datamode = datamode
         self.image_height = args.image_height
         self.image_width = args.image_width
         self.debug = debug
@@ -166,24 +167,33 @@ class TGSSaltDataset(data.Dataset):
         image_name = self.image_names[index]
 
         # image
-        image = Image.open(os.path.join(self.dataset_dir, "images", image_name)).convert('L')
+        image = Image.open(os.path.join(self.dataset_dir, "images", image_name)).convert('RGB')
         image = self.transform(image)
 
         # mask
-        mask = Image.open(os.path.join(self.dataset_dir, "masks", image_name)).convert('L')
-        mask = self.transform(mask)
+        if( self.datamode == "train" ):
+            mask = Image.open(os.path.join(self.dataset_dir, "masks", image_name)).convert('RGB')
+            mask = self.transform(mask)
 
         # depth
-        depth = np.zeros( (mask.shape[0], 1) )
+        depth = np.zeros( (1, 1, 1, 1) )
         depth[:,0] = np.array( self.df_depth.loc[image_name.split(".png")[0],"z"] )
         depth = torch.from_numpy( depth[:,0] ).float()
 
-        results_dict = {
-            "image_name" : image_name,
-            "image" : image,
-            "mask" : mask,
-            "depth" : depth,
-        }
+        if( self.datamode == "train" ):
+            results_dict = {
+                "image_name" : image_name,
+                "image" : image,
+                "mask" : mask,
+                "depth" : depth,
+            }
+        else:
+            results_dict = {
+                "image_name" : image_name,
+                "image" : image,
+                "depth" : depth,
+            }
+
         return results_dict
 
 

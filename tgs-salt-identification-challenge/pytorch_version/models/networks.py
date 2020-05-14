@@ -112,3 +112,99 @@ class UNet( nn.Module ):
         output = self.out_layer( up4 )
 
         return output
+
+#====================================
+# MG-VTON
+#====================================
+class MGVTONResGenerator(nn.Module):
+    def __init__(self, input_nc, output_nc, ngf=64, n_downsampling=3, n_blocks=9, padding_type='zero', affine=True):
+        assert (n_blocks >= 0)
+        super(MGVTONResGenerator, self).__init__()
+        activation = nn.ReLU(True)
+
+        p = 0
+        if padding_type == 'reflect':
+            model = [nn.ReflectionPad2d(3)]
+        elif padding_type == 'replicate':
+            model = [nn.ReplicationPad2d(3)]
+        elif padding_type == 'zero':
+            p = 3
+        else:
+            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+
+        model = [nn.Conv2d(input_nc, ngf, kernel_size=7, padding=p), nn.InstanceNorm2d(ngf, affine=affine), activation]
+        ### downsample
+        for i in range(n_downsampling):
+            mult = 2 ** i
+            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1),
+                      nn.InstanceNorm2d(ngf * mult * 2, affine=affine), activation]
+
+        ### resnet blocks
+        mult = 2 ** n_downsampling
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, affine=affine)]
+
+        ### upsample
+        for i in range(n_downsampling):
+            mult = 2 ** (n_downsampling - i)
+            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1),
+                      nn.InstanceNorm2d(int(ngf * mult / 2),affine=affine), activation]
+        
+        p = 0
+        if padding_type == 'reflect':
+            model += [nn.ReflectionPad2d(3)]
+        elif padding_type == 'replicate':
+            model += [nn.ReplicationPad2d(3)]
+        elif padding_type == 'zero':
+            p = 3
+        else:
+            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=p), nn.Tanh()]
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input):
+        return self.model(input)
+
+# Define a resnet block
+class ResnetBlock(nn.Module):
+    def __init__(self, dim, padding_type, activation=nn.ReLU(True), affine=True, use_dropout=False):
+        super(ResnetBlock, self).__init__()
+        self.conv_block = self.build_conv_block(dim, padding_type, activation, affine, use_dropout)
+
+    def build_conv_block(self, dim, padding_type, activation, affine, use_dropout):
+        conv_block = []
+        p = 0
+        if padding_type == 'reflect':
+            conv_block += [nn.ReflectionPad2d(1)]
+        elif padding_type == 'replicate':
+            conv_block += [nn.ReplicationPad2d(1)]
+        elif padding_type == 'zero':
+            p = 1
+        else:
+            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p),
+                       nn.InstanceNorm2d(dim,affine=affine),
+                       activation]
+        if use_dropout:
+            conv_block += [nn.Dropout(0.5)]
+
+        p = 0
+        if padding_type == 'reflect':
+            conv_block += [nn.ReflectionPad2d(1)]
+        elif padding_type == 'replicate':
+            conv_block += [nn.ReplicationPad2d(1)]
+        elif padding_type == 'zero':
+            p = 1
+        else:
+            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p),
+                       nn.InstanceNorm2d(dim,affine=affine)]
+
+        return nn.Sequential(*conv_block)
+
+    def forward(self, x):
+        #print( "[ResnetBlock] x.size() :", x.size() )
+        out = x + self.conv_block(x)
+        return out

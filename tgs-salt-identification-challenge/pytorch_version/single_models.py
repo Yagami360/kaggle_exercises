@@ -33,9 +33,10 @@ from tensorboardX import SummaryWriter
 
 # 自作モジュール
 from dataset import load_dataset, TGSSaltDataset, TGSSaltDataLoader
-from models import UNet
+from models import UNet, MGVTONResGenerator
+from models import ParsingCrossEntropyLoss, VGGLoss, VanillaGANLoss, LSGANLoss, HingeGANLoss, ConditionalExpressionLoss
 from utils import save_checkpoint, load_checkpoint, convert_rle
-from utils import board_add_image, board_add_images
+from utils import board_add_image, board_add_images, save_image_w_norm
 from utils import iou_metric, iou_metric_batch
 
 
@@ -47,13 +48,13 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="tgs-salt-identification-challenge")
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
-    parser.add_argument("--model_type", choices=["unet", "unet_depth", "mgvton", "ganimation"], default="unet", help="分類器モデルの種類")
+    parser.add_argument("--model_type", choices=["unet", "mgvton"], default="mgvton", help="分類器モデルの種類")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
     parser.add_argument('--tensorboard_dir', type=str, default="tensorboard", help="TensorBoard のディレクトリ")
     parser.add_argument("--n_epoches", type=int, default=200, help="エポック数")    
     parser.add_argument('--batch_size', type=int, default=32, help="バッチサイズ")
-    parser.add_argument('--batch_size_test', type=int, default=32, help="バッチサイズ")
+    parser.add_argument('--batch_size_test', type=int, default=1, help="バッチサイズ")
     parser.add_argument('--lr', type=float, default=0.001, help="学習率")
     parser.add_argument('--beta1', type=float, default=0.5, help="学習率の減衰率")
     parser.add_argument('--beta2', type=float, default=0.999, help="学習率の減衰率")
@@ -61,11 +62,16 @@ if __name__ == '__main__':
     parser.add_argument('--image_width_org', type=int, default=101, help="入力画像の幅（pixel単位）")
     parser.add_argument('--image_height', type=int, default=128, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=128, help="入力画像の幅（pixel単位）")
-    parser.add_argument("--n_channels", type=int, default=1, help="チャンネル数")    
+    parser.add_argument("--n_channels", type=int, default=3, help="チャンネル数")    
     parser.add_argument("--n_samplings", type=int, default=-1, help="ラベル数")
     parser.add_argument('--data_augument', action='store_false')
     #parser.add_argument('--data_augument_type', choices=["none_da", "da1", "da2"], default="da1", help="Data Augumentation の種類")
     parser.add_argument("--val_rate", type=float, default=0.20)
+
+    parser.add_argument('--lambda_l1', type=float, default=10.0, help="L1損失関数の係数値")
+    parser.add_argument('--lambda_vgg', type=float, default=10.0, help="VGG perceptual loss の係数値")
+    parser.add_argument('--lambda_enpropy', type=float, default=0.0001, help="クロスエントロピー損失関数の係数値")
+
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="cpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
@@ -83,7 +89,8 @@ if __name__ == '__main__':
         args.exper_name += "_ep" + str(args.n_epoches)
         args.exper_name += "_b" + str(args.batch_size)
         args.exper_name += "_lr{}".format(args.lr)
-        args.exper_name += "_" + args.data_augument_type
+        if( args.data_augument ):
+            args.exper_name += "_da"
 
     if( args.debug ):
         for key, value in vars(args).items():
@@ -153,7 +160,7 @@ if __name__ == '__main__':
 
     # 学習用データセットとテスト用データセットの設定
     ds_train = TGSSaltDataset( args, args.dataset_dir, datamode = "train", data_augument = args.data_augument, debug = args.debug )
-    ds_test = TGSSaltDataset( args, args.dataset_dir, datamode = "test", data_augument = args.data_augument, debug = args.debug )
+    ds_test = TGSSaltDataset( args, args.dataset_dir, datamode = "test", data_augument = False, debug = args.debug )
 
     #dloader_train = TGSSaltDataLoader(ds_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
     #dloader_test = TGSSaltDataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, n_workers=args.n_workers )
@@ -217,7 +224,9 @@ if __name__ == '__main__':
     # モデルの構造を定義する。
     #================================
     if( args.model_type == "unet" ):
-        model = UNet( n_in_channels = args.n_channels, n_out_channels = args.n_channels, n_fmaps = 64,).to( device )
+        model = UNet( n_in_channels = args.n_channels + 1, n_out_channels = args.n_channels, n_fmaps = 64,).to( device )
+    elif( args.model_type == "mgvton" ):
+        model = MGVTONResGenerator( input_nc = args.n_channels + 1, output_nc = args.n_channels ).to( device )
 
     if( args.debug ):
         print( "model :\n", model )
@@ -237,9 +246,9 @@ if __name__ == '__main__':
     #================================
     # loss 関数の設定
     #================================
-    #loss_fn = nn.BCELoss()
-    loss_fn = nn.BCEWithLogitsLoss()
-    #loss_fn = nn.MSELoss()
+    loss_l1_fn = nn.L1Loss()
+    loss_entropy_fn = ParsingCrossEntropyLoss()
+    loss_vgg_fn = VGGLoss(device)
 
     #================================
     # モデルの学習
@@ -264,6 +273,7 @@ if __name__ == '__main__':
                 image = inputs["image"].to(device)
                 mask = inputs["mask"].to(device)
                 depth = inputs["depth"].to(device)
+                depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
                 if( args.debug and n_print > 0):
                     print( "image.shape : ", image.shape )
                     print( "mask.shape : ", mask.shape )
@@ -279,7 +289,8 @@ if __name__ == '__main__':
                 #----------------------------------------------------
                 # 学習用データをモデルに流し込む
                 #----------------------------------------------------
-                output = model( image )
+                concat = torch.cat( [image, depth], dim=1)
+                output = model( concat )
                 if( args.debug and n_print > 0 ):
                     print( "output.shape :", output.shape )
                     print( "output.dtype :", output.dtype )
@@ -287,7 +298,10 @@ if __name__ == '__main__':
                 #----------------------------------------------------
                 # 損失関数を計算する
                 #----------------------------------------------------
-                loss = loss_fn( output, mask )
+                loss_l1 = loss_l1_fn( output, mask )
+                loss_vgg = loss_vgg_fn( output, mask )
+                loss_entropy = loss_entropy_fn( output, mask )
+                loss = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy
 
                 #----------------------------------------------------
                 # ネットワークの更新処理
@@ -306,7 +320,10 @@ if __name__ == '__main__':
                 #====================================================
                 if( step == 0 or ( step % 50 == 0 ) ):
                     board_train.add_scalar('Model/loss', loss.item(), step+1)
-                    print( "epoches={}, loss={:.5f}".format(epoch+1, loss) )
+                    board_train.add_scalar('Model/loss_l1', loss_l1.item(), step+1)
+                    board_train.add_scalar('Model/loss_vgg', loss_vgg.item(), step+1)
+                    board_train.add_scalar('Model/loss_entropy', loss_entropy.item(), step+1)
+                    print( "epoches={}, loss={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}".format(epoch+1, loss, loss_l1, loss_vgg, loss_entropy) )
 
                     visuals = [
                         [image, mask, output],
@@ -331,44 +348,37 @@ if __name__ == '__main__':
     print("Starting Test Loop...")
     n_print = 1
     y_pred_test = []
+    test_image_names = []
     model.eval()
     for step, inputs in enumerate( tqdm( dloader_test, desc = "Samplings" ) ):
-        if inputs["image"].shape[0] != args.batch_size:
+        if inputs["image"].shape[0] != args.batch_size_test:
             break
 
         image_name = inputs["image_name"]
+        test_image_names.append(image_name[0])
         image = inputs["image"].to(device)
-        mask = inputs["mask"].to(device)
         depth = inputs["depth"].to(device)
+        depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
 
         # 生成器 G の 推論処理
         with torch.no_grad():
-            output = model( image )
+            concat = torch.cat( [image, depth], dim=1)
+            output = model( concat )
             y_pred_test.append( output )
             if( args.debug and n_print > 0 ):
                 print( "output.shape :", output.shape )
+
+        if( step <= 10 ):
+            save_image_w_norm( image, os.path.join( args.results_dir, args.exper_name, "test", "images", image_name[0] ) )
+            save_image_w_norm( output, os.path.join( args.results_dir, args.exper_name, "test", "masks", image_name[0] ) )
 
         n_print -= 1
 
     #================================
     # 可視化処理
     #================================
-    """
-    # 生成画像
-    n_images = 10
-    for i, name in enumerate(image_names_valid[0:n_images-1]):
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "images", name ), X_train_img.squeeze()[i,:,:] * 255 )
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "valid", "masks", name ), y_pred_train.squeeze()[i,:,:] * 255 )
-
-    for i, name in enumerate(test_image_names[0:n_images-1]):
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "images", name ), X_test_img.squeeze()[i,:,:] * 255 )
-        cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "masks", name ), y_pred_test.squeeze()[i,:,:] * 255 )
-
-    # 損失関数
-    if( args.train_mode in ["train"] ):
-        model.plot_loss( os.path.join(args.results_dir, args.exper_name, "losees.png" ) )
-
     # IoU
+    """
     thresholds = np.linspace(0, 1, 50)  # IoU スコアの低い結果を除外するためのスレッショルド
     ious = np.array( [iou_metric_batch(y_valid_mask, np.int32(y_pred_train > threshold)) for threshold in thresholds] )
 
@@ -387,8 +397,10 @@ if __name__ == '__main__':
     plt.grid()
     plt.legend()
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "IoU.png"), dpi = 300, bbox_inches = 'tight' )
+    """
 
     # 元画像と生成マスク画像の重ね合わせ（test）
+    """
     max_images = 60
     grid_width = 15
     grid_height = int(max_images / grid_width)
@@ -404,8 +416,10 @@ if __name__ == '__main__':
 
     plt.suptitle("images and masks [test]\nGreen: salt")
     plt.savefig( os.path.join(args.results_dir, args.exper_name, "images_and_masks_test.png"), dpi = 300, bbox_inches = 'tight' )
+    """
 
     # 元画像と生成マスク画像の重ね合わせ（valid）
+    """
     max_images = 60
     grid_width = 15
     grid_height = int(max_images / grid_width)
@@ -428,7 +442,6 @@ if __name__ == '__main__':
     #================================
     # Kaggle API での submit
     #================================
-    """
     # RLE [Run Length Encoding] 形式で提出のため生成画像を元の画像サイズに変換
     y_pred_test_org = np.zeros( (len(y_pred_test), args.image_height_org, args.image_width_org), dtype=np.float32 )
     for i in range(len(y_pred_test)):
@@ -448,4 +461,4 @@ if __name__ == '__main__':
         api.authenticate()
         api.competition_submit( os.path.join(args.results_dir, args.exper_name, args.submit_file), args.exper_name, args.competition_id)
         os.system('kaggle competitions submissions -c {}'.format(args.competition_id) )
-    """
+    

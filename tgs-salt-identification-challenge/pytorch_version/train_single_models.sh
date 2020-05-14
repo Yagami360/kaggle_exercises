@@ -7,15 +7,15 @@ mkdir -p _logs
 #----------------------
 # model
 #----------------------
-MODEL_TYPE=unet
-N_EPOCHES=200
+MODEL_TYPE=mgvton
+N_EPOCHES=2
 BATCH_SIZE=32
 EXPER_NAME=debug
 rm -rf tensorboard/${EXPER_NAME}
 
 python single_models.py \
     --exper_name ${EXPER_NAME} \
-    --train_mode train \
+    --train_mode test \
     --model_type ${MODEL_TYPE} \
     --n_epoches ${N_EPOCHES} --batch_size ${BATCH_SIZE} \
     --debug
