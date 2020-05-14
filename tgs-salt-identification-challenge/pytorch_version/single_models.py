@@ -63,7 +63,7 @@ if __name__ == '__main__':
     parser.add_argument('--image_height', type=int, default=128, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=128, help="入力画像の幅（pixel単位）")
     parser.add_argument("--n_channels", type=int, default=3, help="チャンネル数")    
-    parser.add_argument("--n_samplings", type=int, default=-1, help="ラベル数")
+    parser.add_argument("--n_samplings", type=int, default=100000, help="ラベル数")
     parser.add_argument('--data_augument', action='store_false')
     #parser.add_argument('--data_augument_type', choices=["none_da", "da1", "da2"], default="da1", help="Data Augumentation の種類")
     parser.add_argument("--val_rate", type=float, default=0.20)
@@ -279,10 +279,6 @@ if __name__ == '__main__':
                     print( "mask.shape : ", mask.shape )
                     print( "depth.shape : ", depth.shape )
 
-                    print( "image.dtype : ", image.dtype )
-                    print( "mask.dtype : ", mask.dtype )
-                    print( "depth.dtype : ", depth.dtype )
-
                 #====================================================
                 # 学習処理
                 #====================================================
@@ -293,7 +289,6 @@ if __name__ == '__main__':
                 output = model( concat )
                 if( args.debug and n_print > 0 ):
                     print( "output.shape :", output.shape )
-                    print( "output.dtype :", output.dtype )
 
                 #----------------------------------------------------
                 # 損失関数を計算する
@@ -335,7 +330,7 @@ if __name__ == '__main__':
             #====================================================
             # モデルの保存
             #====================================================
-            save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_ep%08d.pth' % (epoch+1)) )
+            save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_ep%03d.pth' % (epoch+1)) )
             save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final.pth') )
             print( "saved checkpoints" )
 
@@ -364,15 +359,23 @@ if __name__ == '__main__':
         with torch.no_grad():
             concat = torch.cat( [image, depth], dim=1)
             output = model( concat )
-            y_pred_test.append( output )
+            y_pred_test.append( output[0].detach().cpu().numpy() )
             if( args.debug and n_print > 0 ):
                 print( "output.shape :", output.shape )
+                print( "type(output) :", type(output) )
 
         if( step <= 10 ):
             save_image_w_norm( image, os.path.join( args.results_dir, args.exper_name, "test", "images", image_name[0] ) )
             save_image_w_norm( output, os.path.join( args.results_dir, args.exper_name, "test", "masks", image_name[0] ) )
 
+        if( step >= args.n_samplings ):
+            break
+
         n_print -= 1
+
+    y_pred_test = np.array( y_pred_test )
+    print( "type(y_pred_test) : ", type(y_pred_test) )
+    print( "y_pred_test.shape : ", y_pred_test.shape )
 
     #================================
     # 可視化処理
@@ -445,11 +448,11 @@ if __name__ == '__main__':
     # RLE [Run Length Encoding] 形式で提出のため生成画像を元の画像サイズに変換
     y_pred_test_org = np.zeros( (len(y_pred_test), args.image_height_org, args.image_width_org), dtype=np.float32 )
     for i in range(len(y_pred_test)):
-        #y_pred_test_org[i] = cv2.resize( y_pred_test[i].squeeze(), (args.image_height_org, args.image_width_org), interpolation = cv2.INTER_NEAREST )
-        y_pred_test_org[i] = resize( y_pred_test[i].squeeze(), (args.image_height_org, args.image_width_org), mode='constant', preserve_range=True )
+        #y_pred_test_org[i] = cv2.resize( y_pred_test[i,0,:,:].squeeze(), (args.image_height_org, args.image_width_org), interpolation = cv2.INTER_NEAREST )
+        y_pred_test_org[i] = resize( y_pred_test[i,0,:,:].squeeze(), (args.image_height_org, args.image_width_org), mode='constant', preserve_range=True )
 
     # 提出用データに値を設定
-    y_sub = { name.split(".png")[0] : convert_rle(np.round(y_pred_test_org[i] > threshold_best)) for i,name in enumerate(test_image_names) }
+    y_sub = { name.split(".png")[0] : convert_rle(np.round(y_pred_test_org[i] > 0.5)) for i,name in enumerate(test_image_names) }
     df_submission = pd.DataFrame.from_dict( y_sub, orient='index' )
     df_submission.index.names = ['id']
     df_submission.columns = ['rle_mask']
