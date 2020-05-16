@@ -413,11 +413,12 @@ if __name__ == '__main__':
                     loss_vgg = loss_vgg_fn( output, mask )
                 loss_entropy = loss_entropy_fn( output, mask )
                 loss_bce = loss_bce_fn( output, mask )
+                loss_adv = loss_adv_fn.forward_G( d_fake )
 
                 if( args.n_channels == 3 ):
-                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce
+                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
                 else:
-                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce
+                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
 
                 if( args.model_type_D == "ganimation" ):
                     loss_G_cond_depth = loss_cond_fn( d_real_depth, depth[:,:,0,0] ) + loss_cond_fn( d_fake_depth, depth[:,:,0,0] )
@@ -438,6 +439,7 @@ if __name__ == '__main__':
                         board_train.add_scalar('G/loss_vgg', loss_vgg.item(), step)
                     board_train.add_scalar('G/loss_entropy', loss_entropy.item(), step)
                     board_train.add_scalar('G/loss_bce', loss_bce.item(), step)
+                    board_train.add_scalar('G/loss_adv', loss_adv.item(), step)
                     if( args.model_type_D == "ganimation" ):
                         board_train.add_scalar('G/loss_G_cond_depth', loss_G_cond_depth.item(), step)
 
@@ -448,19 +450,19 @@ if __name__ == '__main__':
                         board_train.add_scalar('D/loss_D_cond_depth', loss_D_cond_depth.item(), step)
 
                     if( args.n_channels == 3 ):
-                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_bce) )
+                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_bce, loss_adv) )
                         print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
                         if( args.model_type_D == "ganimation" ):
                             print( "step={}, loss_G_cond_depth={:.5f}".format(step, loss_G_cond_depth,) )
                             print( "step={}, loss_D_cond_depth={:.5f}".format(step, loss_D_cond_depth,) )
 
                     else:
-                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}".format(step, loss_G, loss_l1, loss_entropy, loss_bce) )
+                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_entropy, loss_bce, loss_adv) )
                         print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
                         if( args.model_type_D == "ganimation" ):
                             print( "step={}, loss_G_cond_depth={:.5f}".format(step, loss_G_cond_depth,) )
                             print( "step={}, loss_D_cond_depth={:.5f}".format(step, loss_D_cond_depth,) )
-                            
+
                     visuals = [
                         [image, mask, output],
                     ]
