@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 from PIL import Image
 import cv2
-from skimage.transform import resize
+#from skimage.transform import resize
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 # sklearn
@@ -33,7 +33,8 @@ from tensorboardX import SummaryWriter
 
 # 自作モジュール
 from dataset import load_dataset, TGSSaltDataset, TGSSaltDataLoader
-from models import UNet, MGVTONResGenerator
+from models import UNet4, UNet4BottleNeck, GANimationGenerator, MGVTONResGenerator
+from models import PatchGANDiscriminator, MultiscaleDiscriminator, GANimationDiscriminator
 from models import ParsingCrossEntropyLoss, VGGLoss, VanillaGANLoss, LSGANLoss, HingeGANLoss, ConditionalExpressionLoss
 from utils import save_checkpoint, load_checkpoint, convert_rle
 from utils import board_add_image, board_add_images, save_image_w_norm
@@ -48,9 +49,11 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="tgs-salt-identification-challenge")
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
-    parser.add_argument("--model_type", choices=["unet", "mgvton"], default="mgvton", help="分類器モデルの種類")
+    parser.add_argument("--model_type_G", choices=["unet4", "unet5", "unet4bottleneck", "mgvton", "ganimation"], default="unet4", help="生成器モデルの種類")
+    parser.add_argument("--model_type_D", choices=["patchgan", "multiscale", "ganimation"], default="patchgan", help="識別器モデルの種類")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
-    parser.add_argument('--load_checkpoints_path', type=str, default="", help="モデルの読み込みファイルのパス")
+    parser.add_argument('--load_checkpoints_path_G', type=str, default="", help="生成器モデルの読み込みファイルのパス")
+    parser.add_argument('--load_checkpoints_path_D', type=str, default="", help="識別器モデルの読み込みファイルのパス")
     parser.add_argument('--tensorboard_dir', type=str, default="tensorboard", help="TensorBoard のディレクトリ")
     parser.add_argument("--n_epoches", type=int, default=200, help="エポック数")    
     parser.add_argument('--batch_size', type=int, default=32, help="バッチサイズ")
@@ -62,18 +65,25 @@ if __name__ == '__main__':
     parser.add_argument('--image_width_org', type=int, default=101, help="入力画像の幅（pixel単位）")
     parser.add_argument('--image_height', type=int, default=128, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=128, help="入力画像の幅（pixel単位）")
-    parser.add_argument("--n_channels", type=int, default=3, help="チャンネル数")    
+    parser.add_argument("--n_channels", type=int, default=1, help="チャンネル数")    
     parser.add_argument("--n_samplings", type=int, default=100000, help="ラベル数")
-    parser.add_argument('--data_augument', action='store_false')
-    #parser.add_argument('--data_augument_type', choices=["none_da", "da1", "da2"], default="da1", help="Data Augumentation の種類")
+    parser.add_argument('--data_augument', action='store_true')
+    parser.add_argument('--depth', action='store_true')
     parser.add_argument("--val_rate", type=float, default=0.20)
 
-    parser.add_argument('--lambda_l1', type=float, default=10.0, help="L1損失関数の係数値")
-    parser.add_argument('--lambda_vgg', type=float, default=10.0, help="VGG perceptual loss の係数値")
-    parser.add_argument('--lambda_enpropy', type=float, default=0.0001, help="クロスエントロピー損失関数の係数値")
+    parser.add_argument('--lambda_bce', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
+    parser.add_argument('--lambda_enpropy', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
+    parser.add_argument('--lambda_l1', type=float, default=0.0, help="L1損失関数の係数値")
+    parser.add_argument('--lambda_vgg', type=float, default=0.0, help="VGG perceptual loss_G の係数値")
+    parser.add_argument('--lambda_adv', type=float, default=1.0, help="Adv loss_G の係数値")
+    parser.add_argument('--adv_loss_type', choices=['vanilla', 'lsgan', 'hinge'], default="lsgan", help="GAN Adv loss の種類")
+    parser.add_argument('--lambda_cond', type=float, default=1000.0, help="conditional expression loss の係数値")
+
+    parser.add_argument("--n_diaplay_step", type=int, default=100,)
+    parser.add_argument("--n_save_epoches", type=int, default=10,)
 
     parser.add_argument("--seed", type=int, default=71)
-    parser.add_argument('--device', choices=['cpu', 'gpu'], default="cpu", help="使用デバイス (CPU or GPU)")
+    parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
     parser.add_argument('--use_cuda_benchmark', action='store_true', help="torch.backends.cudnn.benchmark の使用有効化")
     parser.add_argument('--use_cuda_deterministic', action='store_true', help="再現性確保のために cuDNN に決定論的振る舞い有効化")
@@ -81,16 +91,31 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
+    if( args.model_type_G == "unet4bottleneck" ):
+        args.depth = True
+    if( args.model_type_D == "ganimation" ):
+        args.depth = True
+
     # 実験名を自動的に変更
     if( args.exper_name == "single_model_pytorch" ):
         if( args.train_mode in ["test", "eval"] ):
             args.exper_name = "test_" + args.exper_name
-        args.exper_name += "_" + args.model_type
+        args.exper_name += "_" + args.model_type_G
+        if( args.data_augument ):
+            args.exper_name += "_da"
+        if( args.depth ):
+            args.exper_name += "_depth"
+
         args.exper_name += "_ep" + str(args.n_epoches)
         args.exper_name += "_b" + str(args.batch_size)
         args.exper_name += "_lr{}".format(args.lr)
-        if( args.data_augument ):
-            args.exper_name += "_da"
+        args.exper_name += "_bce{}".format(args.lambda_bce)
+        args.exper_name += "_enpropy{}".format(args.lambda_enpropy)
+        args.exper_name += "_l1{}".format(args.lambda_l1)
+        args.exper_name += "_vgg{}".format(args.lambda_vgg)
+        args.exper_name += "_adv{}_{}".format(args.adv_loss_type, args.lambda_adv)
+        if( args.model_type_D == "ganimation" ):
+            args.exper_name += "_cond{}".format(args.lambda_cond)
 
     if( args.debug ):
         for key, value in vars(args).items():
@@ -223,32 +248,76 @@ if __name__ == '__main__':
     #================================
     # モデルの構造を定義する。
     #================================
-    if( args.model_type == "unet" ):
-        model = UNet( n_in_channels = args.n_channels + 1, n_out_channels = args.n_channels, n_fmaps = 64,).to( device )
-    elif( args.model_type == "mgvton" ):
-        model = MGVTONResGenerator( input_nc = args.n_channels + 1, output_nc = args.n_channels ).to( device )
+    # 生成器
+    if( args.model_type_G == "unet4" ):
+        if( args.depth ):
+            model_G = UNet4( n_in_channels = args.n_channels + 1, n_out_channels = args.n_channels, n_fmaps = 32,).to( device )
+        else:
+            model_G = UNet4( n_in_channels = args.n_channels, n_out_channels = args.n_channels, n_fmaps = 32,).to( device )
+    elif( args.model_type_G == "unet4bottleneck" ):
+        model_G = UNet4BottleNeck( n_in_channels = args.n_channels, n_out_channels = args.n_channels, n_fmaps = 32,).to( device )
+    elif( args.model_type_G == "mgvton" ):
+        if( args.depth ):
+            model_G = MGVTONResGenerator( input_nc = args.n_channels + 1, output_nc = args.n_channels, padding_type='zero', affine=False ).to( device )
+        else:
+            model_G = MGVTONResGenerator( input_nc = args.n_channels, output_nc = args.n_channels, padding_type='zero', affine=False ).to( device )
+            #model_G = MGVTONResGenerator( input_nc = args.n_channels, output_nc = args.n_channels, padding_type='reflect', affine=True ).to( device )
+    elif( args.model_type_G == "ganimation" ):
+        if( args.depth ):
+            model_G = GANimationGenerator( input_nc = args.n_channels + 1, output_nc = args.n_channels, conv_dim = 32 ).to( device )
+        else:
+            model_G = GANimationGenerator( input_nc = args.n_channels, output_nc = args.n_channels, conv_dim = 32 ).to( device )
+
+    # 識別器
+    if( args.model_type_D == "patchgan" ):
+        model_D = PatchGANDiscriminator( n_in_channels = args.n_channels, n_fmaps = 32 ).cuda()
+    elif( args.model_type_D == "multiscale" ):
+        model_D = MultiscaleDiscriminator( n_in_channels = args.n_channels, n_fmaps = 32, n_dis = 3  ).cuda()
+    elif( args.model_type_D == "ganimation" ):
+        model_D = GANimationDiscriminator( n_in_channels = args.n_channels, n_fmaps = 32, feat_dim = 1 ).cuda()
 
     if( args.debug ):
-        print( "model :\n", model )
+        print( "model_G :\n", model_G )
+        print( "model_D :\n", model_D )
 
     # モデルを読み込む
-    if not args.load_checkpoints_path == '' and os.path.exists(args.load_checkpoints_path):
-        load_checkpoint(model, device, args.load_checkpoints_path )
+    if not args.load_checkpoints_path_G == '' and os.path.exists(args.load_checkpoints_path_G):
+        load_checkpoint(model_G, device, args.load_checkpoints_path_G )
+    if not args.load_checkpoints_path_D == '' and os.path.exists(args.load_checkpoints_path_D):
+        load_checkpoint(model_D, device, args.load_checkpoints_path_D )
 
     #================================
-    # optimizer の設定
+    # optimizer_G の設定
     #================================
-    optimizer = optim.Adam(
-        params = model.parameters(),
+    optimizer_G = optim.Adam(
+        params = model_G.parameters(),
+        lr = args.lr, betas = (args.beta1,args.beta2)
+    )
+
+    optimizer_D = optim.Adam(
+        params = model_D.parameters(),
         lr = args.lr, betas = (args.beta1,args.beta2)
     )
 
     #================================
-    # loss 関数の設定
+    # loss_G 関数の設定
     #================================
     loss_l1_fn = nn.L1Loss()
-    loss_entropy_fn = ParsingCrossEntropyLoss()
     loss_vgg_fn = VGGLoss(device)
+    loss_entropy_fn = ParsingCrossEntropyLoss()
+    loss_bce_fn = nn.BCEWithLogitsLoss()
+
+    if( args.adv_loss_type == "vanilla" ):
+        loss_adv_fn = VanillaGANLoss()
+    elif( args.adv_loss_type == "lsgan" ):
+        loss_adv_fn = LSGANLoss()
+    elif( args.adv_loss_type == "hinge" ):
+        loss_adv_fn = HingeGANLoss()
+    else:
+        loss_adv_fn = LSGANLoss()
+
+    if( args.model_type_D == "ganimation" ):
+        loss_cond_fn = ConditionalExpressionLoss()
 
     #================================
     # モデルの学習
@@ -260,20 +329,18 @@ if __name__ == '__main__':
         for epoch in tqdm( range(args.n_epoches), desc = "Epoches" ):
             # DataLoader から 1minibatch 分取り出し、ミニバッチ処理
             for iter, inputs in enumerate( tqdm( dloader_train, desc = "minbatch iters" ) ):
-                model.train()            
+                model_G.train()            
+                model_D.train()            
 
                 # 一番最後のミニバッチループで、バッチサイズに満たない場合は無視する（後の計算で、shape の不一致をおこすため）
                 if inputs["image"].shape[0] != args.batch_size:
                     break
-
-                step += 1
 
                 # ミニバッチデータを GPU へ転送
                 image_name = inputs["image_name"]
                 image = inputs["image"].to(device)
                 mask = inputs["mask"].to(device)
                 depth = inputs["depth"].to(device)
-                depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
                 if( args.debug and n_print > 0):
                     print( "image.shape : ", image.shape )
                     print( "mask.shape : ", mask.shape )
@@ -283,58 +350,134 @@ if __name__ == '__main__':
                 # 学習処理
                 #====================================================
                 #----------------------------------------------------
-                # 学習用データをモデルに流し込む
+                # 生成器 の forword 処理
                 #----------------------------------------------------
-                concat = torch.cat( [image, depth], dim=1)
-                output = model( concat )
+                # 学習用データをモデルに流し込む
+                if( args.model_type_G in ["unet4bottleneck"] ):
+                        output = model_G( image, depth )
+                else:
+                    if( args.depth ):
+                        depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
+                        concat = torch.cat( [image, depth], dim=1)
+                        output = model_G( concat )
+                    else:
+                        output = model_G( image )
+
                 if( args.debug and n_print > 0 ):
                     print( "output.shape :", output.shape )
 
                 #----------------------------------------------------
+                # 識別器の更新処理
+                #----------------------------------------------------
+                # 無効化していた識別器 D のネットワークの勾配計算を有効化。
+                for param in model_D.parameters():
+                    param.requires_grad = True
+
+                # 学習用データをモデルに流し込む
+                if( args.model_type_D == "ganimation" ):
+                    d_real, d_real_depth = model_D( output )
+                    d_fake, d_fake_depth = model_D( output.detach() )
+                    if( args.debug and n_print > 0 ):
+                        print( "d_real.shape :", d_real.shape )
+                        print( "d_fake.shape :", d_fake.shape )
+                        print( "d_real_depth.shape :", d_real_depth.shape )
+                        print( "d_fake_depth.shape :", d_fake_depth.shape )
+                else:
+                    d_real = model_D( output )
+                    d_fake = model_D( output.detach() )
+                    if( args.debug and n_print > 0 ):
+                        print( "d_real.shape :", d_real.shape )
+                        print( "d_fake.shape :", d_fake.shape )
+
                 # 損失関数を計算する
-                #----------------------------------------------------
-                loss_l1 = loss_l1_fn( output, mask )
-                loss_vgg = loss_vgg_fn( output, mask )
-                loss_entropy = loss_entropy_fn( output, mask )
-                loss = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy
+                loss_D, loss_D_real, loss_D_fake = loss_adv_fn.forward_D( d_real, d_fake )
+                if( args.model_type_D == "ganimation" ):
+                    loss_D_cond_depth = loss_cond_fn( d_real_depth, depth[:,:,0,0] ) + loss_cond_fn( d_fake_depth, depth[:,:,0,0] )
+                    loss_D = loss_D + args.lambda_cond * loss_D_cond_depth
 
-                #----------------------------------------------------
                 # ネットワークの更新処理
+                optimizer_D.zero_grad()
+                loss_D.backward(retain_graph=True)
+                optimizer_D.step()
+
+                # 無効化していた識別器 D のネットワークの勾配計算を有効化。
+                for param in model_D.parameters():
+                    param.requires_grad = False
+
                 #----------------------------------------------------
-                # 勾配を 0 に初期化
-                optimizer.zero_grad()
+                # 生成器の更新処理
+                #----------------------------------------------------
+                # 損失関数を計算する
+                loss_l1 = loss_l1_fn( output, mask )
+                if( args.n_channels == 3 ):
+                    loss_vgg = loss_vgg_fn( output, mask )
+                loss_entropy = loss_entropy_fn( output, mask )
+                loss_bce = loss_bce_fn( output, mask )
 
-                # 勾配計算
-                loss.backward()
+                if( args.n_channels == 3 ):
+                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce
+                else:
+                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce
 
-                # backward() で計算した勾配を元に、設定した optimizer に従って、重みを更新
-                optimizer.step()
+                if( args.model_type_D == "ganimation" ):
+                    loss_G_cond_depth = loss_cond_fn( d_real_depth, depth[:,:,0,0] ) + loss_cond_fn( d_fake_depth, depth[:,:,0,0] )
+                    loss_G = loss_G + args.lambda_cond * loss_G_cond_depth
+
+                # ネットワークの更新処理
+                optimizer_G.zero_grad()
+                loss_G.backward()
+                optimizer_G.step()
 
                 #====================================================
                 # 学習過程の表示
                 #====================================================
-                if( step == 0 or ( step % 50 == 0 ) ):
-                    board_train.add_scalar('Model/loss', loss.item(), step+1)
-                    board_train.add_scalar('Model/loss_l1', loss_l1.item(), step+1)
-                    board_train.add_scalar('Model/loss_vgg', loss_vgg.item(), step+1)
-                    board_train.add_scalar('Model/loss_entropy', loss_entropy.item(), step+1)
-                    print( "epoches={}, loss={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}".format(epoch+1, loss, loss_l1, loss_vgg, loss_entropy) )
+                if( step == 0 or ( step % args.n_diaplay_step == 0 ) ):
+                    board_train.add_scalar('G/loss_G', loss_G.item(), step)
+                    board_train.add_scalar('G/loss_l1', loss_l1.item(), step)
+                    if( args.n_channels == 3 ):
+                        board_train.add_scalar('G/loss_vgg', loss_vgg.item(), step)
+                    board_train.add_scalar('G/loss_entropy', loss_entropy.item(), step)
+                    board_train.add_scalar('G/loss_bce', loss_bce.item(), step)
+                    if( args.model_type_D == "ganimation" ):
+                        board_train.add_scalar('G/loss_G_cond_depth', loss_G_cond_depth.item(), step)
 
+                    board_train.add_scalar('D/loss_D', loss_D.item(), step)
+                    board_train.add_scalar('D/loss_D_real', loss_D_real.item(), step)
+                    board_train.add_scalar('D/loss_D_fake', loss_D_fake.item(), step)
+                    if( args.model_type_D == "ganimation" ):
+                        board_train.add_scalar('D/loss_D_cond_depth', loss_D_cond_depth.item(), step)
+
+                    if( args.n_channels == 3 ):
+                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_bce) )
+                        print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
+                        if( args.model_type_D == "ganimation" ):
+                            print( "step={}, loss_G_cond_depth={:.5f}".format(step, loss_G_cond_depth,) )
+                            print( "step={}, loss_D_cond_depth={:.5f}".format(step, loss_D_cond_depth,) )
+
+                    else:
+                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}".format(step, loss_G, loss_l1, loss_entropy, loss_bce) )
+                        print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
+                        if( args.model_type_D == "ganimation" ):
+                            print( "step={}, loss_G_cond_depth={:.5f}".format(step, loss_G_cond_depth,) )
+                            print( "step={}, loss_D_cond_depth={:.5f}".format(step, loss_D_cond_depth,) )
+                            
                     visuals = [
                         [image, mask, output],
                     ]
-                    board_add_images(board_train, 'images', visuals, epoch+1)
+                    board_add_images(board_train, 'images', visuals, step+1)
 
+                step += 1
                 n_print -= 1
 
             #====================================================
             # モデルの保存
             #====================================================
-            save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_ep%03d.pth' % (epoch+1)) )
-            save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final.pth') )
-            print( "saved checkpoints" )
+            if( epoch % args.n_save_epoches == 0 ):
+                save_checkpoint( model_G, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_ep%03d.pth' % (epoch)) )
+                save_checkpoint( model_G, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final.pth') )
+                print( "saved checkpoints" )
 
-        save_checkpoint( model, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final.pth') )
+        save_checkpoint( model_G, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final.pth') )
         print("Finished Training Loop.")
 
     #================================
@@ -344,7 +487,7 @@ if __name__ == '__main__':
     n_print = 1
     y_pred_test = []
     test_image_names = []
-    model.eval()
+    model_G.eval()
     for step, inputs in enumerate( tqdm( dloader_test, desc = "Samplings" ) ):
         if inputs["image"].shape[0] != args.batch_size_test:
             break
@@ -358,7 +501,7 @@ if __name__ == '__main__':
         # 生成器 G の 推論処理
         with torch.no_grad():
             concat = torch.cat( [image, depth], dim=1)
-            output = model( concat )
+            output = model_G( concat )
             y_pred_test.append( output[0].detach().cpu().numpy() )
             if( args.debug and n_print > 0 ):
                 print( "output.shape :", output.shape )
@@ -448,8 +591,8 @@ if __name__ == '__main__':
     # RLE [Run Length Encoding] 形式で提出のため生成画像を元の画像サイズに変換
     y_pred_test_org = np.zeros( (len(y_pred_test), args.image_height_org, args.image_width_org), dtype=np.float32 )
     for i in range(len(y_pred_test)):
-        #y_pred_test_org[i] = cv2.resize( y_pred_test[i,0,:,:].squeeze(), (args.image_height_org, args.image_width_org), interpolation = cv2.INTER_NEAREST )
-        y_pred_test_org[i] = resize( y_pred_test[i,0,:,:].squeeze(), (args.image_height_org, args.image_width_org), mode='constant', preserve_range=True )
+        y_pred_test_org[i] = cv2.resize( y_pred_test[i,0,:,:].squeeze(), (args.image_height_org, args.image_width_org), interpolation = cv2.INTER_NEAREST )
+        #y_pred_test_org[i] = resize( y_pred_test[i,0,:,:].squeeze(), (args.image_height_org, args.image_width_org), mode='constant', preserve_range=True )
 
     # 提出用データに値を設定
     y_sub = { name.split(".png")[0] : convert_rle(np.round(y_pred_test_org[i] > 0.5)) for i,name in enumerate(test_image_names) }

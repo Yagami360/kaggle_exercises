@@ -6,7 +6,7 @@ import re
 import math
 from PIL import Image, ImageDraw, ImageOps
 import cv2
-from skimage.transform import resize
+#from skimage.transform import resize
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
@@ -16,6 +16,8 @@ import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
 from torchvision.utils import save_image
+
+from utils import set_random_seed
 
 IMG_EXTENSIONS = (
     '.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif',
@@ -49,16 +51,16 @@ def load_dataset(
     X_train_img = np.zeros( (len(train_image_names), image_height, image_width, n_channels), dtype=np.float32 )
     for i, name in enumerate(train_image_names):
         img = cv2.imread( os.path.join( dataset_dir, "train", "images", name ), cv2.IMREAD_GRAYSCALE ) / 255    # 0.0f ~ 1.0f
-        #img = cv2.resize( img, (image_height, image_width), interpolation = cv2.INTER_LANCZOS4 )                # shape = [H,W,C]
-        img = resize(img, (image_height, image_width), mode='constant', preserve_range=True)
+        img = cv2.resize( img, (image_height, image_width), interpolation = cv2.INTER_LANCZOS4 )                # shape = [H,W,C]
+        #img = resize(img, (image_height, image_width), mode='constant', preserve_range=True)
         X_train_img[i] = img.reshape( (image_height, image_width, n_channels))
 
     # y_train（マスク画像）
     y_train_mask = np.zeros( (len(train_image_names), image_height, image_width, 1), dtype=np.float32 )
     for i, name in enumerate(train_image_names):
         img = cv2.imread( os.path.join( dataset_dir, "train", "masks", name ), cv2.IMREAD_GRAYSCALE ) / 255     # 0.0f ~ 1.0f
-        #img = cv2.resize( img, (image_height, image_width), interpolation = cv2.INTER_NEAREST )                 # shape = [H,W,C]
-        img = resize(img, (image_height, image_width), mode='constant', preserve_range=True)
+        img = cv2.resize( img, (image_height, image_width), interpolation = cv2.INTER_NEAREST )                 # shape = [H,W,C]
+        #img = resize(img, (image_height, image_width), mode='constant', preserve_range=True)
         y_train_mask[i] = img.reshape( (image_height, image_width, 1))
 
     # X_test
@@ -112,6 +114,7 @@ class TGSSaltDataset(data.Dataset):
         super(TGSSaltDataset, self).__init__()
         self.args = args
         self.datamode = datamode
+        self.data_augument = data_augument
         self.image_height = args.image_height
         self.image_width = args.image_width
         self.debug = debug
@@ -125,10 +128,11 @@ class TGSSaltDataset(data.Dataset):
         if( data_augument ):
             self.transform = transforms.Compose(
                 [
-                    transforms.RandomResizedCrop( (args.image_height, args.image_width), scale=(0.5, 1.0)),
+                    transforms.RandomResizedCrop( (args.image_height, args.image_width) ),
                     transforms.RandomHorizontalFlip(),
-                    transforms.RandomAffine( degrees = (-5,5),  translate=(0.15, 0.05), scale = (0.5,1.25), resample=Image.BICUBIC ),
-                    transforms.ToTensor(),   # Tensor に変換
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.15, 0.15), scale = (0.90,1.10), resample=Image.BICUBIC ),
+                    transforms.ToTensor(),
                     transforms.Normalize( mean, std ),
                 ]
             )
@@ -137,7 +141,7 @@ class TGSSaltDataset(data.Dataset):
                 [
                     transforms.Resize( (args.image_height, args.image_width), interpolation=Image.LANCZOS ),
                     transforms.CenterCrop( size = (args.image_height, args.image_width) ),
-                    transforms.ToTensor(),   # Tensor に変換
+                    transforms.ToTensor(),
                     transforms.Normalize( mean, std ),
                 ]
             )
@@ -165,15 +169,30 @@ class TGSSaltDataset(data.Dataset):
 
     def __getitem__(self, index):
         image_name = self.image_names[index]
-
+        
         # image
-        image = Image.open(os.path.join(self.dataset_dir, "images", image_name)).convert('RGB')
+        if( self.args.n_channels == 1 ):
+            image = Image.open(os.path.join(self.dataset_dir, "images", image_name)).convert('L')
+        else:
+            image = Image.open(os.path.join(self.dataset_dir, "images", image_name)).convert('RGB')
+
+        self.seed_da = random.randint(0,10000)
+        if( self.data_augument ):
+            set_random_seed( self.seed_da )
+
         image = self.transform(image)
 
         # mask
         if( self.datamode == "train" ):
-            mask = Image.open(os.path.join(self.dataset_dir, "masks", image_name)).convert('RGB')
-            mask = self.transform(mask)
+            if( self.args.n_channels == 1 ):
+                mask = Image.open(os.path.join(self.dataset_dir, "masks", image_name)).convert('L')
+            else:
+                mask = Image.open(os.path.join(self.dataset_dir, "masks", image_name)).convert('RGB')
+
+        if( self.data_augument ):
+            set_random_seed( self.seed_da )
+
+        mask = self.transform(mask)
 
         # depth
         depth = np.zeros( (1, 1, 1, 1) )

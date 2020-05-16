@@ -1,25 +1,33 @@
 #!/bin/sh
-#nohup sh single_models.sh > _logs/single_models.out &
-#nohup sh single_models.sh poweroff > _logs/single_models.out &
+#nohup sh train_single_models.sh > _logs/train_single_models_1.out &
+#nohup sh train_single_models.sh poweroff > _logs/train_single_models_2.out &
 #set -e
 mkdir -p _logs
 
 #----------------------
 # model
 #----------------------
-MODEL_TYPE=mgvton
+MODEL_TYPE_G=unet4
+#MODEL_TYPE_G=unet4bottleneck
+#MODEL_TYPE_G=mgvton
+#MODEL_TYPE_G=ganimation
+
+MODEL_TYPE_D=patchgan
+#MODEL_TYPE_D=ganimation
+
 N_EPOCHES=200
 BATCH_SIZE=32
-EXPER_NAME=debug
-#EXPER_NAME=single_model_pytorch_mgvton_ep200_b32_lr0.001_da
-rm -rf tensorboard/${EXPER_NAME}
+#EXPER_NAME=debug
+#rm -rf tensorboard/${EXPER_NAME}
 
 python single_models.py \
-    --exper_name ${EXPER_NAME} \
     --train_mode train \
-    --model_type ${MODEL_TYPE} \
+    --model_type_G ${MODEL_TYPE_G} --model_type_D ${MODEL_TYPE_D} \
     --n_epoches ${N_EPOCHES} --batch_size ${BATCH_SIZE} \
+    --lambda_bce 1.0 --lambda_enpropy 1.0 --lambda_l1 0.0 --lambda_adv 1.0 --lambda_cond 1000.0 \
     --debug
+
+#    --exper_name ${EXPER_NAME} \
 
 if [ $1 = "poweroff" ] ; then
     sudo poweroff

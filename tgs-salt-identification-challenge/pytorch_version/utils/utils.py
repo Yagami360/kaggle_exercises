@@ -3,6 +3,7 @@ import os
 import numpy as np
 from PIL import Image
 import imageio
+import random
 
 import torch
 import torch.nn as nn
@@ -228,3 +229,14 @@ def iou_metric_batch(y_true_in, y_pred_in):
         value = iou_metric(y_true_in[batch], y_pred_in[batch])
         metric.append(value)
     return np.mean(metric)
+
+#====================================================
+# その他
+#====================================================
+def set_random_seed(seed=72):
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    return
