@@ -68,6 +68,7 @@ def save_image_w_norm( img_tsr, save_img_paths ):
     if img_np.shape[0] == 1:
         img_np = img_np.squeeze(0)
         img_np = img_np.swapaxes(0, 1).swapaxes(1, 2)
+        img_np = img_np.squeeze()
     elif img_np.shape[0] == 3:
         img_np = img_np.swapaxes(0, 1).swapaxes(1, 2)
 

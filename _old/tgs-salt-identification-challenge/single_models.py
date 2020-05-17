@@ -21,7 +21,7 @@ from sklearn.model_selection import train_test_split
 
 # PyTorch
 import torch
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import TensorDataset, DataLoader
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
@@ -57,7 +57,6 @@ if __name__ == '__main__':
     parser.add_argument('--tensorboard_dir', type=str, default="tensorboard", help="TensorBoard のディレクトリ")
     parser.add_argument("--n_epoches", type=int, default=200, help="エポック数")    
     parser.add_argument('--batch_size', type=int, default=32, help="バッチサイズ")
-    parser.add_argument('--batch_size_valid', type=int, default=1, help="バッチサイズ")
     parser.add_argument('--batch_size_test', type=int, default=1, help="バッチサイズ")
     parser.add_argument('--lr', type=float, default=0.001, help="学習率")
     parser.add_argument('--beta1', type=float, default=0.5, help="学習率の減衰率")
@@ -70,6 +69,7 @@ if __name__ == '__main__':
     parser.add_argument("--n_samplings", type=int, default=100000, help="ラベル数")
     parser.add_argument('--data_augument', action='store_true')
     parser.add_argument('--depth', action='store_true')
+    parser.add_argument("--val_rate", type=float, default=0.20)
 
     parser.add_argument('--lambda_bce', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
     parser.add_argument('--lambda_enpropy', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
@@ -80,10 +80,8 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_cond', type=float, default=1000.0, help="conditional expression loss の係数値")
 
     parser.add_argument("--n_diaplay_step", type=int, default=100,)
-    parser.add_argument('--n_display_valid_step', type=int, default=100, help="valid データの tensorboard への表示間隔")
     parser.add_argument("--n_save_epoches", type=int, default=50,)
 
-    parser.add_argument("--val_rate", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
@@ -127,6 +125,12 @@ if __name__ == '__main__':
         os.mkdir(args.results_dir)
     if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
         os.mkdir(os.path.join(args.results_dir, args.exper_name))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "valid") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "valid"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "valid", "images") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "valid", "images"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "valid", "masks") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "valid", "masks"))
     if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test") ):
         os.mkdir(os.path.join(args.results_dir, args.exper_name, "test"))
     if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test", "images") ):
@@ -173,9 +177,7 @@ if __name__ == '__main__':
     # for visualation
     if( args.train_mode == "train" ):
         board_train = SummaryWriter( log_dir = os.path.join(args.tensorboard_dir, args.exper_name) )
-        board_valid = SummaryWriter( log_dir = os.path.join(args.tensorboard_dir, args.exper_name + "_valid") )
-
-    board_test = SummaryWriter( log_dir = os.path.join(args.tensorboard_dir, args.exper_name + "_test") )
+        board_test = SummaryWriter( log_dir = os.path.join(args.tensorboard_dir, args.exper_name + "_test") )
 
     #================================
     # データセットの読み込み
@@ -186,24 +188,63 @@ if __name__ == '__main__':
     ds_train = TGSSaltDataset( args, args.dataset_dir, datamode = "train", data_augument = args.data_augument, debug = args.debug )
     ds_test = TGSSaltDataset( args, args.dataset_dir, datamode = "test", data_augument = False, debug = args.debug )
 
-    dloader_train = torch.utils.data.DataLoader(ds_train, batch_size=args.batch_size, shuffle=True, num_workers = args.n_workers, pin_memory = True )
-    dloader_test = torch.utils.data.DataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, num_workers = args.n_workers, pin_memory = True )
     #dloader_train = TGSSaltDataLoader(ds_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
     #dloader_test = TGSSaltDataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, n_workers=args.n_workers )
-    
+    dloader_train = torch.utils.data.DataLoader(ds_train, batch_size=args.batch_size, shuffle=True, num_workers = args.n_workers, pin_memory = True )
+    dloader_test = torch.utils.data.DataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, num_workers = args.n_workers, pin_memory = True )
+
+    """
+    X_train_img, y_train_mask, X_test_img, X_train_depth, X_test_depth, train_image_names, test_image_names \
+    = load_dataset( 
+        dataset_dir = args.dataset_dir, 
+        image_height_org = args.image_height, image_width_org = args.image_width_org, 
+        image_height = args.image_height, image_width = args.image_width, n_channels = args.n_channels, 
+        n_samplings = args.n_samplings,
+        debug = args.debug,
+    )
+    y_pred_train = np.zeros( y_train_mask.shape )
+    if( args.debug ):
+        print( "X_train_img.shape : ", X_train_img.shape )
+        print( "y_train_mask.shape : ", y_train_mask.shape )
+        print( "X_test_img.shape : ", X_test_img.shape )
+        print( "X_train_depth.shape : ", X_train_depth.shape )
+        print( "X_test_depth.shape : ", X_test_depth.shape )
+    """
+
+    # 可視化
+    """
+    max_images = 60
+    grid_width = 15
+    grid_height = int(max_images / grid_width)
+    fig, axs = plt.subplots(grid_height, grid_width, figsize=(grid_width, grid_height))
+    for idx in range(max_images):
+        img = X_train_img[idx]       # 0.0f ~ 1.0f
+        mask = y_train_mask[idx]     # 0.0f ~ 1.0f
+        ax = axs[int(idx / grid_width), idx % grid_width]
+        ax.imshow(img.squeeze(), cmap="Greys")
+        ax.imshow(mask.squeeze(), alpha=0.3, cmap="Greens")
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+
+    plt.suptitle("images and masks [train]\nGreen: salt")
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "images_and_masks_train.png"), dpi = 300, bbox_inches = 'tight' )
+    """
+
     #================================
     # 前処理
     #================================
-    index = np.arange(len(ds_train))
-    train_index, valid_index = train_test_split( index, test_size=args.val_rate, random_state=args.seed )
+    """
+    # データセットの分割
+    X_train_img, X_valid_img, y_train_mask, y_valid_mask, train_image_names, image_names_valid, X_train_depth, X_valid_depth \
+    = train_test_split( X_train_img, y_train_mask, train_image_names, X_train_depth, test_size=args.val_rate, random_state=args.seed )
     if( args.debug ):
-        print( "train_index.shape : ", train_index.shape )
-        print( "valid_index.shape : ", valid_index.shape )
-        print( "train_index[0:10] : ", train_index[0:10] )
-        print( "valid_index[0:10] : ", valid_index[0:10] )
-
-    dloader_train = torch.utils.data.DataLoader(Subset(ds_train, train_index), batch_size=args.batch_size, shuffle=True, num_workers = args.n_workers, pin_memory = True )
-    dloader_valid = torch.utils.data.DataLoader(Subset(ds_train, valid_index), batch_size=args.batch_size_valid, shuffle=True, num_workers = args.n_workers, pin_memory = True )
+        print( "X_train_img.shape : ", X_train_img.shape )
+        print( "X_valid_img.shape : ", X_valid_img.shape )
+        print( "y_train_mask.shape : ", y_train_mask.shape )
+        print( "y_valid_mask.shape : ", y_valid_mask.shape )
+        print( "X_train_depth.shape : ", X_train_depth.shape )
+        print( "X_valid_depth.shape : ", X_valid_depth.shape )
+    """
 
     #================================
     # モデルの構造を定義する。
@@ -287,9 +328,7 @@ if __name__ == '__main__':
         n_print = 1
         step = 0
         for epoch in tqdm( range(args.n_epoches), desc = "Epoches" ):
-            #=====================================
-            # 学習用データの処理
-            #=====================================
+            # DataLoader から 1minibatch 分取り出し、ミニバッチ処理
             for iter, inputs in enumerate( tqdm( dloader_train, desc = "minbatch iters" ) ):
                 model_G.train()            
                 model_D.train()            
@@ -428,117 +467,7 @@ if __name__ == '__main__':
                     visuals = [
                         [image, mask, output],
                     ]
-                    board_add_images(board_train, 'train', visuals, step+1)
-
-                #=====================================
-                # 検証用データの処理
-                #=====================================
-                if( step == 0 or ( step % args.n_display_valid_step == 0 ) ):
-                    for iter, inputs in enumerate( tqdm( dloader_valid, desc = "minbatch iters" ) ):
-                        model_G.eval()            
-                        model_D.eval()    
-
-                        # 一番最後のミニバッチループで、バッチサイズに満たない場合は無視する（後の計算で、shape の不一致をおこすため）
-                        if inputs["image"].shape[0] != args.batch_size_valid:
-                            break
-
-                        # ミニバッチデータを GPU へ転送
-                        image_name = inputs["image_name"]
-                        image = inputs["image"].to(device)
-                        mask = inputs["mask"].to(device)
-                        depth = inputs["depth"].to(device)
-                        if( args.debug and n_print > 0):
-                            print( "image.shape : ", image.shape )
-                            print( "mask.shape : ", mask.shape )
-                            print( "depth.shape : ", depth.shape )
-
-                        #====================================================
-                        # 推論処理
-                        #====================================================
-                        # 生成器
-                        with torch.no_grad():
-                            if( args.model_type_G in ["unet4bottleneck"] ):
-                                    output = model_G( image, depth )
-                            else:
-                                if( args.depth ):
-                                    depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
-                                    concat = torch.cat( [image, depth], dim=1)
-                                    output = model_G( concat )
-                                else:
-                                    output = model_G( image )
-
-                            if( args.debug and n_print > 0 ):
-                                print( "output.shape :", output.shape )
-
-                        # 識別器
-                        with torch.no_grad():
-                            if( args.model_type_D == "ganimation" ):
-                                d_real, d_real_depth = model_D( output )
-                                d_fake, d_fake_depth = model_D( output.detach() )
-                                if( args.debug and n_print > 0 ):
-                                    print( "d_real.shape :", d_real.shape )
-                                    print( "d_fake.shape :", d_fake.shape )
-                                    print( "d_real_depth.shape :", d_real_depth.shape )
-                                    print( "d_fake_depth.shape :", d_fake_depth.shape )
-                            else:
-                                d_real = model_D( output )
-                                d_fake = model_D( output.detach() )
-                                if( args.debug and n_print > 0 ):
-                                    print( "d_real.shape :", d_real.shape )
-                                    print( "d_fake.shape :", d_fake.shape )
-
-                        #----------------------------------------------------
-                        # 損失関数の計算
-                        #----------------------------------------------------
-                        # 生成器
-                        loss_l1 = loss_l1_fn( output, mask )
-                        if( args.n_channels == 3 ):
-                            loss_vgg = loss_vgg_fn( output, mask )
-                        loss_entropy = loss_entropy_fn( output, mask )
-                        loss_bce = loss_bce_fn( output, mask )
-                        loss_adv = loss_adv_fn.forward_G( d_fake )
-
-                        if( args.n_channels == 3 ):
-                            loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
-                        else:
-                            loss_G = args.lambda_l1 * loss_l1 + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
-
-                        if( args.model_type_D == "ganimation" ):
-                            loss_G_cond_depth = loss_cond_fn( d_real_depth, depth[:,:,0,0] ) + loss_cond_fn( d_fake_depth, depth[:,:,0,0] )
-                            loss_G = loss_G + args.lambda_cond * loss_G_cond_depth
-
-                        # 識別器
-                        loss_D, loss_D_real, loss_D_fake = loss_adv_fn.forward_D( d_real, d_fake )
-                        if( args.model_type_D == "ganimation" ):
-                            loss_D_cond_depth = loss_cond_fn( d_real_depth, depth[:,:,0,0] ) + loss_cond_fn( d_fake_depth, depth[:,:,0,0] )
-                            loss_D = loss_D + args.lambda_cond * loss_D_cond_depth
-
-                        #----------------------------------------------------
-                        # 表示処理
-                        #----------------------------------------------------
-                        # 生成器
-                        board_valid.add_scalar('G/loss_G', loss_G.item(), step)
-                        board_valid.add_scalar('G/loss_l1', loss_l1.item(), step)
-                        if( args.n_channels == 3 ):
-                            board_valid.add_scalar('G/loss_vgg', loss_vgg.item(), step)
-                        board_valid.add_scalar('G/loss_entropy', loss_entropy.item(), step)
-                        board_valid.add_scalar('G/loss_bce', loss_bce.item(), step)
-                        board_valid.add_scalar('G/loss_adv', loss_adv.item(), step)
-                        if( args.model_type_D == "ganimation" ):
-                            board_valid.add_scalar('G/loss_G_cond_depth', loss_G_cond_depth.item(), step)
-
-                        # 識別器
-                        board_valid.add_scalar('D/loss_D', loss_D.item(), step)
-                        board_valid.add_scalar('D/loss_D_real', loss_D_real.item(), step)
-                        board_valid.add_scalar('D/loss_D_fake', loss_D_fake.item(), step)
-                        if( args.model_type_D == "ganimation" ):
-                            board_valid.add_scalar('D/loss_D_cond_depth', loss_D_cond_depth.item(), step)
-
-                        # 
-                        visuals = [
-                            [image, mask, output],
-                        ]
-                        board_add_images(board_valid, 'valid', visuals, step+1)
+                    board_add_images(board_train, 'images', visuals, step+1)
 
                 step += 1
                 n_print -= 1
@@ -550,50 +479,15 @@ if __name__ == '__main__':
                 save_checkpoint( model_G, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_ep%03d.pth' % (epoch)) )
                 save_checkpoint( model_G, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final.pth') )
                 print( "saved checkpoints" )
-                
+
         save_checkpoint( model_G, device, os.path.join(args.save_checkpoints_dir, args.exper_name, 'model_final.pth') )
         print("Finished Training Loop.")
 
     #================================
-    # 学習用データでの推論処理
+    # モデルの推論処理
     #================================
-    print("Starting eval Valid Loop...")
-    y_pred_valid = []
-    y_pred_valid_mask = []
-    model_G.eval()
-    for step, inputs in enumerate( tqdm( dloader_valid, desc = "Samplings" ) ):
-        if inputs["image"].shape[0] != args.batch_size_valid:
-            break
-
-        image = inputs["image"].to(device)
-        mask = inputs["mask"].to(device)
-        depth = inputs["depth"].to(device)
-
-        # 生成器 G の 推論処理
-        with torch.no_grad():
-            if( args.model_type_G in ["unet4bottleneck"] ):
-                    output = model_G( image, depth )
-            else:
-                if( args.depth ):
-                    depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
-                    concat = torch.cat( [image, depth], dim=1)
-                    output = model_G( concat )
-                else:
-                    output = model_G( image )
-
-            y_pred_valid.append( output[0].detach().cpu().numpy() )
-            y_pred_valid_mask.append( mask[0].detach().cpu().numpy() )
-
-    y_pred_valid = np.array( y_pred_valid )
-    y_pred_valid_mask = np.array( y_pred_valid_mask )
-    if( args.debug ):
-        print( "type(y_pred_valid) : ", type(y_pred_valid) )
-        print( "y_pred_valid.shape : ", y_pred_valid.shape )
-
-    #================================
-    # テスト用データでの推論処理
-    #================================
-    print("Starting eval Test Loop...")
+    print("Starting Test Loop...")
+    n_print = 1
     y_pred_test = []
     test_image_names = []
     model_G.eval()
@@ -619,47 +513,87 @@ if __name__ == '__main__':
                     output = model_G( image )
 
             y_pred_test.append( output[0].detach().cpu().numpy() )
+            if( args.debug and n_print > 0 ):
+                print( "output.shape :", output.shape )
+                print( "type(output) :", type(output) )
 
-        n_display_images = 50
-        if( step <= n_display_images ):
-            visuals = [
-                [image, output],
-            ]
-            board_add_images(board_test, 'test/{}'.format(step), visuals, -1 )
-
+        if( step <= 10 ):
             save_image_w_norm( image, os.path.join( args.results_dir, args.exper_name, "test", "images", image_name[0] ) )
             save_image_w_norm( output, os.path.join( args.results_dir, args.exper_name, "test", "masks", image_name[0] ) )
 
         if( step >= args.n_samplings ):
             break
 
+        n_print -= 1
+
     y_pred_test = np.array( y_pred_test )
-    if( args.debug ):
-        print( "type(y_pred_test) : ", type(y_pred_test) )
-        print( "y_pred_test.shape : ", y_pred_test.shape )
+    print( "type(y_pred_test) : ", type(y_pred_test) )
+    print( "y_pred_test.shape : ", y_pred_test.shape )
 
     #================================
     # 可視化処理
     #================================
-    # 最適なマスクスレッショルド値での IoU スコアの計算
-    thresholds = np.linspace(-1, 1, 100)  # IoU スコアの低い結果を除外するためのスレッショルド（-1.0 ~ 1.0 は生成マスク画像のピクセル値に対応）
-    ious = np.array( [iou_metric_batch(y_pred_valid_mask, np.int32(y_pred_valid > threshold)) for threshold in thresholds] )
+    # IoU
+    """
+    thresholds = np.linspace(0, 1, 50)  # IoU スコアの低い結果を除外するためのスレッショルド
+    ious = np.array( [iou_metric_batch(y_valid_mask, np.int32(y_pred_train > threshold)) for threshold in thresholds] )
 
     threshold_best_index = np.argmax(ious[9:-10]) + 9
     iou_best = ious[threshold_best_index]
-    threshold_best = thresholds[threshold_best_index]
+    threshold_best = thresholds[threshold_best_index]   # ?
     print( "iou_best = {:0.4f} ".format(iou_best) )
     print( "threshold_best = {:0.4f} ".format(threshold_best) )
 
     fig, axs = plt.subplots()
     axs.plot(thresholds, ious)
     axs.plot(threshold_best, iou_best, "xr", label="Best threshold")
-    plt.xlabel("Threshold (mask pixel value)")
+    plt.xlabel("Threshold")
     plt.ylabel("IoU")
     plt.title("Threshold vs IoU ({}, {})".format(threshold_best, iou_best))
     plt.grid()
     plt.legend()
-    plt.savefig( os.path.join(args.results_dir, args.exper_name, "IoU_mask_threshold.png"), dpi = 300, bbox_inches = 'tight' )
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "IoU.png"), dpi = 300, bbox_inches = 'tight' )
+    """
+
+    # 元画像と生成マスク画像の重ね合わせ（test）
+    """
+    max_images = 60
+    grid_width = 15
+    grid_height = int(max_images / grid_width)
+    fig, axs = plt.subplots(grid_height, grid_width, figsize=(grid_width, grid_height))
+    for i, name in enumerate(test_image_names[0:max_images]):
+        img = X_test_img[i]
+        mask = np.array(np.round(y_pred_test[i] > threshold_best), dtype=np.float32)
+        ax = axs[int(i / grid_width), i % grid_width]
+        ax.imshow(img.squeeze(), cmap="Greys")
+        ax.imshow(mask.squeeze(), alpha=0.3, cmap="Greens")
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+
+    plt.suptitle("images and masks [test]\nGreen: salt")
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "images_and_masks_test.png"), dpi = 300, bbox_inches = 'tight' )
+    """
+
+    # 元画像と生成マスク画像の重ね合わせ（valid）
+    """
+    max_images = 60
+    grid_width = 15
+    grid_height = int(max_images / grid_width)
+    fig, axs = plt.subplots(grid_height, grid_width, figsize=(grid_width, grid_height))
+    for i, name in enumerate(image_names_valid[0:max_images]):
+        img = X_valid_img[i]
+        mask = y_valid_mask[i]
+        pred_mask = np.array(np.round(y_pred_train[i] > threshold_best), dtype=np.float32)
+        ax = axs[int(i / grid_width), i % grid_width]
+        ax.imshow(img.squeeze(), cmap="Greys")
+        ax.imshow(mask.squeeze(), alpha=0.3, cmap="Greens")
+        ax.imshow(pred_mask.squeeze(), alpha=0.3, cmap="OrRd")
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+
+    plt.suptitle("images and masks [train]\nGreen: salt [correct], Red: salt [predict]")
+    plt.savefig( os.path.join(args.results_dir, args.exper_name, "images_and_masks_valid.png"), dpi = 300, bbox_inches = 'tight' )
+    """
 
     #================================
     # Kaggle API での submit
@@ -671,8 +605,7 @@ if __name__ == '__main__':
         #y_pred_test_org[i] = resize( y_pred_test[i,0,:,:].squeeze(), (args.image_height_org, args.image_width_org), mode='constant', preserve_range=True )
 
     # 提出用データに値を設定
-    #threshold_best = 0.0
-    y_sub = { name.split(".png")[0] : convert_rle(np.round(y_pred_test_org[i] > threshold_best)) for i,name in enumerate(test_image_names) }
+    y_sub = { name.split(".png")[0] : convert_rle(np.round(y_pred_test_org[i] > 0.0)) for i,name in enumerate(test_image_names) }
     df_submission = pd.DataFrame.from_dict( y_sub, orient='index' )
     df_submission.index.names = ['id']
     df_submission.columns = ['rle_mask']

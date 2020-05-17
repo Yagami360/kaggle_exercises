@@ -131,7 +131,7 @@ class TGSSaltDataset(data.Dataset):
                     transforms.RandomResizedCrop( (args.image_height, args.image_width) ),
                     transforms.RandomHorizontalFlip(),
                     transforms.RandomVerticalFlip(),
-                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.15, 0.15), scale = (0.90,1.10), resample=Image.BICUBIC ),
+#                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
                     transforms.ToTensor(),
                     transforms.Normalize( mean, std ),
                 ]
@@ -160,7 +160,7 @@ class TGSSaltDataset(data.Dataset):
             print( "len(self.image_names) :", len(self.image_names))
             print( "self.image_names[0:5] :", self.image_names[0:5])
             print( "self.df_train.head() \n:", self.df_train.head())
-            print( "self.df_depth \n:", self.df_depth)
+            print( "self.df_depth[0:5] \n:", self.df_depth[0:5] )
 
         return
 
@@ -189,10 +189,10 @@ class TGSSaltDataset(data.Dataset):
             else:
                 mask = Image.open(os.path.join(self.dataset_dir, "masks", image_name)).convert('RGB')
 
-        if( self.data_augument ):
-            set_random_seed( self.seed_da )
+            if( self.data_augument ):
+                set_random_seed( self.seed_da )
 
-        mask = self.transform(mask)
+            mask = self.transform(mask)
 
         # depth
         depth = np.zeros( (1, 1, 1, 1) )
