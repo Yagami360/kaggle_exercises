@@ -128,10 +128,12 @@ class TGSSaltDataset(data.Dataset):
         if( data_augument ):
             self.transform = transforms.Compose(
                 [
-                    transforms.RandomResizedCrop( (args.image_height, args.image_width) ),
+                    transforms.Resize( (args.image_height, args.image_width), interpolation=Image.LANCZOS ),
+#                    transforms.RandomResizedCrop( (args.image_height, args.image_width) ),
                     transforms.RandomHorizontalFlip(),
-                    transforms.RandomVerticalFlip(),
+#                    transforms.RandomVerticalFlip(),
 #                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
+                    transforms.CenterCrop( size = (args.image_height, args.image_width) ),
                     transforms.ToTensor(),
                     transforms.Normalize( mean, std ),
                 ]

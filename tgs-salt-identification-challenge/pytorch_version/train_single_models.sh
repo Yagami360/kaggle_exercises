@@ -2,14 +2,16 @@
 #nohup sh train_single_models.sh > _logs/train_single_models_1.out &
 #nohup sh train_single_models.sh poweroff > _logs/train_single_models_2.out &
 #nohup sh train_single_models.sh > _logs/train_single_models_5.out &
+#nohup sh train_single_models.sh poweroff > _logs/train_single_models_7.out &
 #set -e
 mkdir -p _logs
 
 #----------------------
 # model
 #----------------------
-MODEL_TYPE_G=unet4
+#MODEL_TYPE_G=unet4
 #MODEL_TYPE_G=unet4bottleneck
+MODEL_TYPE_G=unet4resnet34
 #MODEL_TYPE_G=mgvton
 #MODEL_TYPE_G=ganimation
 

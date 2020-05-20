@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import torchvision
 from torchvision import models
-
+from torchvision.models import resnet34, resnet50
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -21,9 +21,6 @@ def weights_init(m):
 # UNet
 #====================================
 class UNet4( nn.Module ):
-    """
-    UNet 構造での生成器
-    """
     def __init__(
         self,
         n_in_channels = 3, n_out_channels = 3, n_fmaps = 64,
@@ -75,9 +72,9 @@ class UNet4( nn.Module ):
         # 出力層
         self.out_layer = nn.Sequential(
 		    nn.Conv2d( n_fmaps, n_out_channels, 3, 1, 1 ),
-		    nn.Tanh(),
-#		    nn.Sigmoid(),
 		)
+        self.activate_tanh = nn.Tanh()
+        self.activate_sigmoid = nn.Sigmoid()
         return
 
     def forward( self, input ):
@@ -114,9 +111,10 @@ class UNet4( nn.Module ):
         up4 = self.up4(concat4)
 
         # 出力層
-        output = self.out_layer( up4 )
-
-        return output
+        output_none_act = self.out_layer( up4 )
+        output = self.activate_tanh( output_none_act )
+        output_mask = self.activate_sigmoid( output_none_act )
+        return output, output_mask, output_none_act
 
 
 class UNet5( nn.Module ):
@@ -175,9 +173,9 @@ class UNet5( nn.Module ):
         # 出力層
         self.out_layer = nn.Sequential(
 		    nn.Conv2d( n_fmaps, n_out_channels, 3, 1, 1 ),
-		    nn.Tanh(),
-#		    nn.Sigmoid(),
 		)
+        self.activate_tanh = nn.Tanh()
+        self.activate_sigmoid = nn.Sigmoid()
         return
 
     def forward( self, input ):
@@ -220,10 +218,10 @@ class UNet5( nn.Module ):
         up5 = self.up5(concat5)
 
         # 出力層
-        output = self.out_layer( up5 )
-
-        return output
-
+        output_none_act = self.out_layer( up4 )
+        output = self.activate_tanh( output_none_act )
+        output_mask = self.activate_sigmoid( output_none_act )
+        return output, output_mask, output_none_act
 
 #====================================
 # UNet BottleNeck
@@ -283,9 +281,9 @@ class UNet4BottleNeck( nn.Module ):
         # 出力層
         self.out_layer = nn.Sequential(
 		    nn.Conv2d( n_fmaps, n_out_channels, 3, 1, 1 ),
-		    nn.Tanh(),
-#		    nn.Sigmoid(),
 		)
+        self.activate_tanh = nn.Tanh()
+        self.activate_sigmoid = nn.Sigmoid()
         return
 
     def forward( self, input, depth ):
@@ -324,9 +322,143 @@ class UNet4BottleNeck( nn.Module ):
         up4 = self.up4(concat4)
 
         # 出力層
-        output = self.out_layer( up4 )
+        output_none_act = self.out_layer( up4 )
+        output = self.activate_tanh( output_none_act )
+        output_mask = self.activate_sigmoid( output_none_act )
+        return output, output_mask, output_none_act
 
-        return output
+#====================================
+# UNet with Resnet
+#====================================
+class UNet4ResNet34( nn.Module ):
+    def __init__(
+        self,
+        n_in_channels = 3, n_out_channels = 3, n_fmaps = 64,
+        pretrained = True,
+    ):
+        super( UNet4ResNet34, self ).__init__()
+
+        def conv_block( in_dim, out_dim ):
+            model = nn.Sequential(
+                nn.Conv2d( in_dim, out_dim, kernel_size=3, stride=1, padding=1 ),
+                nn.BatchNorm2d( out_dim ),
+                nn.LeakyReLU( 0.2, inplace=True ),
+
+                nn.Conv2d( out_dim, out_dim, kernel_size=3, stride=1, padding=1 ),
+                nn.BatchNorm2d( out_dim ),
+            )
+            return model
+
+        def dconv_block( in_dim, out_dim ):
+            model = nn.Sequential(
+                nn.ConvTranspose2d( in_dim, out_dim, kernel_size=3, stride=2, padding=1,output_padding=1 ),
+                nn.BatchNorm2d(out_dim),
+                nn.LeakyReLU( 0.2, inplace=True ),
+            )
+            return model
+
+        self.resnet = resnet34( pretrained )
+        self.resnet.conv1 = nn.Conv2d( n_in_channels, n_fmaps, kernel_size=7, stride=2, padding=3, bias=False )
+        #print( self.resnet )
+
+        self.conv0 = nn.Sequential(
+            self.resnet.conv1,
+            self.resnet.bn1,
+            self.resnet.relu
+        )
+
+        # Encoder（ダウンサンプリング）
+        self.conv1 = nn.Sequential( self.resnet.layer1 )
+        self.conv2 = nn.Sequential( self.resnet.layer2 )
+        self.conv3 = nn.Sequential( self.resnet.layer3 )
+        self.conv4 = nn.Sequential( self.resnet.layer4 )
+
+        #
+        self.bridge = conv_block( n_fmaps*8, n_fmaps*16 )
+        self.bridge_pool = nn.MaxPool2d( kernel_size=2, stride=2, padding=0 )
+
+        # Decoder（アップサンプリング）
+        self.dconv1 = dconv_block( n_fmaps*16, n_fmaps*8 )
+        self.up1 = conv_block( n_fmaps*16, n_fmaps*8 )
+        self.dconv2 = dconv_block( n_fmaps*8, n_fmaps*4 )
+        self.up2 = conv_block( n_fmaps*8, n_fmaps*4 )
+        self.dconv3 = dconv_block( n_fmaps*4, n_fmaps*2 )
+        self.up3 = conv_block( n_fmaps*4, n_fmaps*2 )
+        self.dconv4 = dconv_block( n_fmaps*2, n_fmaps*1 )
+        self.up4 = conv_block( n_fmaps*2, n_fmaps*1 )
+
+        self.dconv0 = dconv_block( n_fmaps*1, n_fmaps*1 )
+
+        # 出力層
+        self.out_layer = nn.Sequential(
+		    nn.Conv2d( n_fmaps, n_out_channels, 3, 1, 1 ),
+		)
+        self.activate_tanh = nn.Tanh()
+        self.activate_sigmoid = nn.Sigmoid()
+        return
+
+    def forward( self, input ):
+        """
+        conv1.shape :  torch.Size([32, 32, 128, 128])
+        pool1.shape :  torch.Size([32, 32, 64, 64])
+        conv4.shape :  torch.Size([32, 256, 16, 16])
+        pool4.shape :  torch.Size([32, 256, 8, 8])
+        dconv1.shape :  torch.Size([32, 256, 16, 16])
+        """
+        conv0 = self.conv0( input )
+        #print( "conv0.shape : ", conv0.shape )
+
+        # Encoder（ダウンサンプリング）
+        conv1 = self.conv1( conv0 )
+        #print( "conv1.shape : ", conv1.shape )
+
+        conv2 = self.conv2( conv1 )
+        #print( "conv2.shape : ", conv2.shape )
+
+        conv3 = self.conv3( conv2 )
+        #print( "conv3.shape : ", conv3.shape )
+
+        conv4 = self.conv4( conv3 )
+        #print( "conv4.shape : ", conv4.shape )
+
+        #
+        bridge = self.bridge( conv4 )
+        bridge = self.bridge_pool(bridge)
+        #print( "bridge.shape : ", bridge.shape )
+
+        # Decoder（アップサンプリング）& skip connection
+        dconv1 = self.dconv1(bridge)
+        #print( "dconv1.shape : ", dconv1.shape )
+        concat1 = torch.cat( [dconv1,conv4], dim=1 )
+        up1 = self.up1(concat1)
+        #print( "up1.shape : ", up1.shape )
+
+        dconv2 = self.dconv2(up1)
+        #print( "dconv2.shape : ", dconv2.shape )
+        concat2 = torch.cat( [dconv2,conv3], dim=1 )
+        up2 = self.up2(concat2)
+        #print( "up2.shape : ", up2.shape )
+
+        dconv3 = self.dconv3(up2)
+        #print( "dconv3.shape : ", dconv3.shape )
+        concat3 = torch.cat( [dconv3,conv2], dim=1 )
+        up3 = self.up3(concat3)
+        #print( "up3.shape : ", up3.shape )
+
+        dconv4 = self.dconv4(up3)
+        #print( "dconv4.shape : ", dconv4.shape )
+        concat4 = torch.cat( [dconv4,conv1], dim=1 )
+        up4 = self.up4(concat4)
+        #print( "up4.shape : ", up4.shape )
+
+        dconv0 = self.dconv0(up4)
+        #print( "dconv0.shape : ", dconv0.shape )
+
+        # 出力層
+        output_none_act = self.out_layer( dconv0 )
+        output = self.activate_tanh( output_none_act )
+        output_mask = self.activate_sigmoid( output_none_act )
+        return output, output_mask, output_none_act
 
 #====================================
 # MG-VTON

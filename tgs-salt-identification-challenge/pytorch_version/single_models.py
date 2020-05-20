@@ -33,7 +33,7 @@ from tensorboardX import SummaryWriter
 
 # 自作モジュール
 from dataset import load_dataset, TGSSaltDataset, TGSSaltDataLoader
-from models import UNet4, UNet4BottleNeck, GANimationGenerator, MGVTONResGenerator
+from models import UNet4, UNet4BottleNeck, UNet4ResNet34, GANimationGenerator, MGVTONResGenerator
 from models import PatchGANDiscriminator, MultiscaleDiscriminator, GANimationDiscriminator
 from models import ParsingCrossEntropyLoss, LovaszSoftmaxLoss, VGGLoss, VanillaGANLoss, LSGANLoss, HingeGANLoss, ConditionalExpressionLoss
 from utils import save_checkpoint, load_checkpoint, convert_rle
@@ -49,7 +49,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="tgs-salt-identification-challenge")
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
-    parser.add_argument("--model_type_G", choices=["unet4", "unet5", "unet4bottleneck", "mgvton", "ganimation"], default="unet4", help="生成器モデルの種類")
+    parser.add_argument("--model_type_G", choices=["unet4", "unet5", "unet4bottleneck", "unet4resnet34", "mgvton", "ganimation"], default="unet4", help="生成器モデルの種類")
     parser.add_argument("--model_type_D", choices=["patchgan", "multiscale", "ganimation"], default="patchgan", help="識別器モデルの種類")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument('--load_checkpoints_path_G', type=str, default="", help="生成器モデルの読み込みファイルのパス")
@@ -203,7 +203,7 @@ if __name__ == '__main__':
         print( "valid_index[0:10] : ", valid_index[0:10] )
 
     dloader_train = torch.utils.data.DataLoader(Subset(ds_train, train_index), batch_size=args.batch_size, shuffle=True, num_workers = args.n_workers, pin_memory = True )
-    dloader_valid = torch.utils.data.DataLoader(Subset(ds_train, valid_index), batch_size=args.batch_size_valid, shuffle=True, num_workers = args.n_workers, pin_memory = True )
+    dloader_valid = torch.utils.data.DataLoader(Subset(ds_train, valid_index), batch_size=args.batch_size_valid, shuffle=False, num_workers = args.n_workers, pin_memory = True )
 
     #================================
     # モデルの構造を定義する。
@@ -216,6 +216,8 @@ if __name__ == '__main__':
             model_G = UNet4( n_in_channels = args.n_channels, n_out_channels = args.n_channels, n_fmaps = 32,).to( device )
     elif( args.model_type_G == "unet4bottleneck" ):
         model_G = UNet4BottleNeck( n_in_channels = args.n_channels, n_out_channels = args.n_channels, n_fmaps = 32,).to( device )
+    elif( args.model_type_G == "unet4resnet34" ):
+        model_G = UNet4ResNet34( n_in_channels = args.n_channels, n_out_channels = args.n_channels, n_fmaps = 64,).to( device )
     elif( args.model_type_G == "mgvton" ):
         if( args.depth ):
             model_G = MGVTONResGenerator( input_nc = args.n_channels + 1, output_nc = args.n_channels, padding_type='zero', affine=False ).to( device )
@@ -315,18 +317,18 @@ if __name__ == '__main__':
                 #----------------------------------------------------
                 # 学習用データをモデルに流し込む
                 if( args.model_type_G in ["unet4bottleneck"] ):
-                        output = model_G( image, depth )
+                        output, output_mask, output_none_act = model_G( image, depth )
                 else:
                     if( args.depth ):
                         depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
                         concat = torch.cat( [image, depth], dim=1)
-                        output = model_G( concat )
+                        output, output_mask, output_none_act = model_G( concat )
                     else:
-                        output = model_G( image )
+                        output, output_mask, output_none_act = model_G( image )
 
                 if( args.debug and n_print > 0 ):
                     print( "output.shape :", output.shape )
-
+                    
                 #----------------------------------------------------
                 # 識別器の更新処理
                 #----------------------------------------------------
@@ -375,9 +377,7 @@ if __name__ == '__main__':
 
                 loss_entropy = loss_entropy_fn( output, mask )
                 loss_bce = loss_bce_fn( output, mask )
-                #loss_entropy = loss_entropy_fn( mask, output )
-                #loss_bce = loss_bce_fn( mask, output )
-                loss_lovasz_softmax = loss_lovasz_softmax_fn( mask, output )
+                loss_lovasz_softmax = loss_lovasz_softmax_fn( mask, output_none_act )
                 loss_adv = loss_adv_fn.forward_G( d_fake )
 
                 if( args.n_channels == 3 ):
@@ -445,7 +445,7 @@ if __name__ == '__main__':
                     loss_G_cond_depth_total = 0
                     loss_D_total, loss_D_real_total, loss_D_fake_total, loss_D_cond_depth_total = 0, 0, 0, 0
                     n_valid_loop = 0
-                    for iter, inputs in enumerate( tqdm( dloader_valid, desc = "minbatch iters" ) ):
+                    for iter, inputs in enumerate(dloader_valid):
                         model_G.eval()            
                         model_D.eval()    
 
@@ -465,14 +465,14 @@ if __name__ == '__main__':
                         # 生成器
                         with torch.no_grad():
                             if( args.model_type_G in ["unet4bottleneck"] ):
-                                    output = model_G( image, depth )
+                                    output, output_mask, output_none_act = model_G( image, depth )
                             else:
                                 if( args.depth ):
                                     depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
                                     concat = torch.cat( [image, depth], dim=1)
-                                    output = model_G( concat )
+                                    output, output_mask, output_none_act = model_G( concat )
                                 else:
-                                    output = model_G( image )
+                                    output, output_mask, output_none_act = model_G( image )
 
                         # 識別器
                         with torch.no_grad():
@@ -492,7 +492,7 @@ if __name__ == '__main__':
                             loss_vgg = loss_vgg_fn( output, mask )
                         loss_entropy = loss_entropy_fn( output, mask )
                         loss_bce = loss_bce_fn( output, mask )
-                        loss_lovasz_softmax = loss_lovasz_softmax_fn( mask, output )
+                        loss_lovasz_softmax = loss_lovasz_softmax_fn( mask, output_none_act )
                         loss_adv = loss_adv_fn.forward_G( d_fake )
 
                         if( args.n_channels == 3 ):

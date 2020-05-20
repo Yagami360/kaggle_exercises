@@ -228,8 +228,11 @@ class LovaszSoftmaxLoss(nn.Module):
         return
 
     def forward(self, y_true, y_pred ):
-        logits = y_true[:,0:,:,:]
-        labels = ( (y_pred[:,0:,:,:]+1)*0.5 ).int()
+        # logits: [B, H, W] Variable, logits at each pixel (between -\infty and +\infty)
+        # labels: [B, H, W] Tensor, binary ground truth masks (0 or 1)
+        logits = y_pred[:,0:,:,:].float()        
+        labels = ( (y_true[:,0:,:,:]+1)*0.5 ).int()
+
         loss_lovasz_softmax = lovasz_hinge( logits, labels )
         return loss_lovasz_softmax
 
