@@ -26,9 +26,10 @@ python single_models.py \
     --train_mode train \
     --model_type_G ${MODEL_TYPE_G} --model_type_D ${MODEL_TYPE_D} \
     --n_epoches ${N_EPOCHES} --batch_size ${BATCH_SIZE} \
-    --lambda_bce 1.0 --lambda_enpropy 1.0 --lambda_l1 0.0 --lambda_adv 0.0 --lambda_cond 1000.0 \
-    --data_augument \
+    --lambda_bce 1.0 --lambda_enpropy 1.0 --lambda_lovasz_softmax 1.0  --lambda_l1 0.0 --lambda_adv 0.0 --lambda_cond 0.0 \
     --debug
+
+#    --data_augument \
 
 if [ $1 = "poweroff" ] ; then
     sudo poweroff

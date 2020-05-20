@@ -35,7 +35,7 @@ from tensorboardX import SummaryWriter
 from dataset import load_dataset, TGSSaltDataset, TGSSaltDataLoader
 from models import UNet4, UNet4BottleNeck, GANimationGenerator, MGVTONResGenerator
 from models import PatchGANDiscriminator, MultiscaleDiscriminator, GANimationDiscriminator
-from models import ParsingCrossEntropyLoss, VGGLoss, VanillaGANLoss, LSGANLoss, HingeGANLoss, ConditionalExpressionLoss
+from models import ParsingCrossEntropyLoss, LovaszSoftmaxLoss, VGGLoss, VanillaGANLoss, LSGANLoss, HingeGANLoss, ConditionalExpressionLoss
 from utils import save_checkpoint, load_checkpoint, convert_rle
 from utils import board_add_image, board_add_images, save_image_w_norm
 from utils import iou_metric, iou_metric_batch
@@ -73,6 +73,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--lambda_bce', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
     parser.add_argument('--lambda_enpropy', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
+    parser.add_argument('--lambda_lovasz_softmax', type=float, default=1.0, help="Lovasz Softmax loss の係数値")
     parser.add_argument('--lambda_l1', type=float, default=0.0, help="L1損失関数の係数値")
     parser.add_argument('--lambda_vgg', type=float, default=0.0, help="VGG perceptual loss_G の係数値")
     parser.add_argument('--lambda_adv', type=float, default=1.0, help="Adv loss_G の係数値")
@@ -113,6 +114,7 @@ if __name__ == '__main__':
         args.exper_name += "_lr{}".format(args.lr)
         args.exper_name += "_bce{}".format(args.lambda_bce)
         args.exper_name += "_enpropy{}".format(args.lambda_enpropy)
+        args.exper_name += "_lovasz{}".format(args.lambda_lovasz_softmax)
         args.exper_name += "_l1{}".format(args.lambda_l1)
         args.exper_name += "_vgg{}".format(args.lambda_vgg)
         args.exper_name += "_adv{}_{}".format(args.adv_loss_type, args.lambda_adv)
@@ -188,8 +190,6 @@ if __name__ == '__main__':
 
     dloader_train = torch.utils.data.DataLoader(ds_train, batch_size=args.batch_size, shuffle=True, num_workers = args.n_workers, pin_memory = True )
     dloader_test = torch.utils.data.DataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, num_workers = args.n_workers, pin_memory = True )
-    #dloader_train = TGSSaltDataLoader(ds_train, batch_size=args.batch_size, shuffle=True, n_workers=args.n_workers )
-    #dloader_test = TGSSaltDataLoader(ds_test, batch_size=args.batch_size_test, shuffle=False, n_workers=args.n_workers )
     
     #================================
     # 前処理
@@ -230,11 +230,11 @@ if __name__ == '__main__':
 
     # 識別器
     if( args.model_type_D == "patchgan" ):
-        model_D = PatchGANDiscriminator( n_in_channels = args.n_channels, n_fmaps = 32 ).cuda()
+        model_D = PatchGANDiscriminator( n_in_channels = args.n_channels, n_fmaps = 32 ).to( device )
     elif( args.model_type_D == "multiscale" ):
-        model_D = MultiscaleDiscriminator( n_in_channels = args.n_channels, n_fmaps = 32, n_dis = 3  ).cuda()
+        model_D = MultiscaleDiscriminator( n_in_channels = args.n_channels, n_fmaps = 32, n_dis = 3  ).to( device )
     elif( args.model_type_D == "ganimation" ):
-        model_D = GANimationDiscriminator( n_in_channels = args.n_channels, n_fmaps = 32, feat_dim = 1 ).cuda()
+        model_D = GANimationDiscriminator( n_in_channels = args.n_channels, n_fmaps = 32, feat_dim = 1 ).to( device )
 
     if( args.debug ):
         print( "model_G :\n", model_G )
@@ -266,15 +266,14 @@ if __name__ == '__main__':
     loss_vgg_fn = VGGLoss(device)
     loss_entropy_fn = ParsingCrossEntropyLoss()
     loss_bce_fn = nn.BCEWithLogitsLoss()
+    loss_lovasz_softmax_fn = LovaszSoftmaxLoss()
 
     if( args.adv_loss_type == "vanilla" ):
-        loss_adv_fn = VanillaGANLoss()
+        loss_adv_fn = VanillaGANLoss(device)
     elif( args.adv_loss_type == "lsgan" ):
-        loss_adv_fn = LSGANLoss()
+        loss_adv_fn = LSGANLoss(device)
     elif( args.adv_loss_type == "hinge" ):
-        loss_adv_fn = HingeGANLoss()
-    else:
-        loss_adv_fn = LSGANLoss()
+        loss_adv_fn = HingeGANLoss(device)
 
     if( args.model_type_D == "ganimation" ):
         loss_cond_fn = ConditionalExpressionLoss()
@@ -373,14 +372,18 @@ if __name__ == '__main__':
                 loss_l1 = loss_l1_fn( output, mask )
                 if( args.n_channels == 3 ):
                     loss_vgg = loss_vgg_fn( output, mask )
+
                 loss_entropy = loss_entropy_fn( output, mask )
                 loss_bce = loss_bce_fn( output, mask )
+                #loss_entropy = loss_entropy_fn( mask, output )
+                #loss_bce = loss_bce_fn( mask, output )
+                loss_lovasz_softmax = loss_lovasz_softmax_fn( mask, output )
                 loss_adv = loss_adv_fn.forward_G( d_fake )
 
                 if( args.n_channels == 3 ):
-                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
+                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_lovasz_softmax * loss_lovasz_softmax + args.lambda_adv * loss_adv
                 else:
-                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
+                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_lovasz_softmax * loss_lovasz_softmax + args.lambda_adv * loss_adv
 
                 if( args.model_type_D == "ganimation" ):
                     loss_G_cond_depth = loss_cond_fn( d_real_depth, depth[:,:,0,0] ) + loss_cond_fn( d_fake_depth, depth[:,:,0,0] )
@@ -401,6 +404,7 @@ if __name__ == '__main__':
                         board_train.add_scalar('G/loss_vgg', loss_vgg.item(), step)
                     board_train.add_scalar('G/loss_entropy', loss_entropy.item(), step)
                     board_train.add_scalar('G/loss_bce', loss_bce.item(), step)
+                    board_train.add_scalar('G/loss_lovasz_softmax', loss_lovasz_softmax.item(), step)
                     board_train.add_scalar('G/loss_adv', loss_adv.item(), step)
                     if( args.model_type_D == "ganimation" ):
                         board_train.add_scalar('G/loss_G_cond_depth', loss_G_cond_depth.item(), step)
@@ -412,14 +416,14 @@ if __name__ == '__main__':
                         board_train.add_scalar('D/loss_D_cond_depth', loss_D_cond_depth.item(), step)
 
                     if( args.n_channels == 3 ):
-                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_bce, loss_adv) )
+                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_lovasz_softmax={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_bce, loss_lovasz_softmax, loss_adv) )
                         print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
                         if( args.model_type_D == "ganimation" ):
                             print( "step={}, loss_G_cond_depth={:.5f}".format(step, loss_G_cond_depth,) )
                             print( "step={}, loss_D_cond_depth={:.5f}".format(step, loss_D_cond_depth,) )
 
                     else:
-                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_entropy, loss_bce, loss_adv) )
+                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_lovasz_softmax={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_entropy, loss_bce, loss_lovasz_softmax, loss_adv) )
                         print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
                         if( args.model_type_D == "ganimation" ):
                             print( "step={}, loss_G_cond_depth={:.5f}".format(step, loss_G_cond_depth,) )
@@ -434,6 +438,13 @@ if __name__ == '__main__':
                 # 検証用データの処理
                 #=====================================
                 if( step == 0 or ( step % args.n_display_valid_step == 0 ) ):
+                    loss_G_total = 0
+                    loss_l1_total, loss_vgg_total = 0, 0
+                    loss_entropy_total, loss_bce_total, loss_lovasz_softmax_total = 0, 0, 0
+                    loss_adv_total = 0
+                    loss_G_cond_depth_total = 0
+                    loss_D_total, loss_D_real_total, loss_D_fake_total, loss_D_cond_depth_total = 0, 0, 0, 0
+                    n_valid_loop = 0
                     for iter, inputs in enumerate( tqdm( dloader_valid, desc = "minbatch iters" ) ):
                         model_G.eval()            
                         model_D.eval()    
@@ -447,10 +458,6 @@ if __name__ == '__main__':
                         image = inputs["image"].to(device)
                         mask = inputs["mask"].to(device)
                         depth = inputs["depth"].to(device)
-                        if( args.debug and n_print > 0):
-                            print( "image.shape : ", image.shape )
-                            print( "mask.shape : ", mask.shape )
-                            print( "depth.shape : ", depth.shape )
 
                         #====================================================
                         # 推論処理
@@ -467,25 +474,14 @@ if __name__ == '__main__':
                                 else:
                                     output = model_G( image )
 
-                            if( args.debug and n_print > 0 ):
-                                print( "output.shape :", output.shape )
-
                         # 識別器
                         with torch.no_grad():
                             if( args.model_type_D == "ganimation" ):
                                 d_real, d_real_depth = model_D( output )
                                 d_fake, d_fake_depth = model_D( output.detach() )
-                                if( args.debug and n_print > 0 ):
-                                    print( "d_real.shape :", d_real.shape )
-                                    print( "d_fake.shape :", d_fake.shape )
-                                    print( "d_real_depth.shape :", d_real_depth.shape )
-                                    print( "d_fake_depth.shape :", d_fake_depth.shape )
                             else:
                                 d_real = model_D( output )
                                 d_fake = model_D( output.detach() )
-                                if( args.debug and n_print > 0 ):
-                                    print( "d_real.shape :", d_real.shape )
-                                    print( "d_fake.shape :", d_fake.shape )
 
                         #----------------------------------------------------
                         # 損失関数の計算
@@ -496,12 +492,13 @@ if __name__ == '__main__':
                             loss_vgg = loss_vgg_fn( output, mask )
                         loss_entropy = loss_entropy_fn( output, mask )
                         loss_bce = loss_bce_fn( output, mask )
+                        loss_lovasz_softmax = loss_lovasz_softmax_fn( mask, output )
                         loss_adv = loss_adv_fn.forward_G( d_fake )
 
                         if( args.n_channels == 3 ):
-                            loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
+                            loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_lovasz_softmax * loss_lovasz_softmax + args.lambda_adv * loss_adv
                         else:
-                            loss_G = args.lambda_l1 * loss_l1 + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
+                            loss_G = args.lambda_l1 * loss_l1 + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_lovasz_softmax * loss_lovasz_softmax + args.lambda_adv * loss_adv
 
                         if( args.model_type_D == "ganimation" ):
                             loss_G_cond_depth = loss_cond_fn( d_real_depth, depth[:,:,0,0] ) + loss_cond_fn( d_fake_depth, depth[:,:,0,0] )
@@ -513,32 +510,53 @@ if __name__ == '__main__':
                             loss_D_cond_depth = loss_cond_fn( d_real_depth, depth[:,:,0,0] ) + loss_cond_fn( d_fake_depth, depth[:,:,0,0] )
                             loss_D = loss_D + args.lambda_cond * loss_D_cond_depth
 
-                        #----------------------------------------------------
-                        # 表示処理
-                        #----------------------------------------------------
-                        # 生成器
-                        board_valid.add_scalar('G/loss_G', loss_G.item(), step)
-                        board_valid.add_scalar('G/loss_l1', loss_l1.item(), step)
+                        # total
+                        loss_G_total += loss_G
+                        loss_l1_total += loss_l1
                         if( args.n_channels == 3 ):
-                            board_valid.add_scalar('G/loss_vgg', loss_vgg.item(), step)
-                        board_valid.add_scalar('G/loss_entropy', loss_entropy.item(), step)
-                        board_valid.add_scalar('G/loss_bce', loss_bce.item(), step)
-                        board_valid.add_scalar('G/loss_adv', loss_adv.item(), step)
+                            loss_vgg_total += loss_vgg
+                        loss_entropy_total += loss_entropy
+                        loss_bce_total += loss_bce
+                        loss_lovasz_softmax_total += loss_lovasz_softmax
+                        loss_adv_total += loss_adv
                         if( args.model_type_D == "ganimation" ):
-                            board_valid.add_scalar('G/loss_G_cond_depth', loss_G_cond_depth.item(), step)
-
-                        # 識別器
-                        board_valid.add_scalar('D/loss_D', loss_D.item(), step)
-                        board_valid.add_scalar('D/loss_D_real', loss_D_real.item(), step)
-                        board_valid.add_scalar('D/loss_D_fake', loss_D_fake.item(), step)
+                            loss_G_cond_depth_total += loss_G_cond_depth
+                        loss_D_total += loss_D
+                        loss_D_real_total += loss_D_real
+                        loss_D_fake_total += loss_D_fake
                         if( args.model_type_D == "ganimation" ):
-                            board_valid.add_scalar('D/loss_D_cond_depth', loss_D_cond_depth.item(), step)
+                            loss_D_cond_depth_total += loss_D_cond_depth
 
                         # 
-                        visuals = [
-                            [image, mask, output],
-                        ]
-                        board_add_images(board_valid, 'valid', visuals, step+1)
+                        if( iter <= args.batch_size ):
+                            visuals = [
+                                [image, mask, output],
+                            ]
+                            board_add_images(board_valid, 'valid/{}'.format(iter), visuals, step+1)
+
+                        n_valid_loop += 1
+
+                    #----------------------------------------------------
+                    # 表示処理
+                    #----------------------------------------------------
+                    # 生成器
+                    board_valid.add_scalar('G/loss_G', loss_G_total.item()/n_valid_loop, step)
+                    board_valid.add_scalar('G/loss_l1', loss_l1_total.item()/n_valid_loop, step)
+                    if( args.n_channels == 3 ):
+                        board_valid.add_scalar('G/loss_vgg', loss_vgg_total.item()/n_valid_loop, step)
+                    board_valid.add_scalar('G/loss_entropy', loss_entropy_total.item()/n_valid_loop, step)
+                    board_valid.add_scalar('G/loss_bce', loss_bce_total.item()/n_valid_loop, step)
+                    board_valid.add_scalar('G/loss_lovasz_softmax', loss_lovasz_softmax_total.item()/n_valid_loop, step)
+                    board_valid.add_scalar('G/loss_adv', loss_adv_total.item()/n_valid_loop, step)
+                    if( args.model_type_D == "ganimation" ):
+                        board_valid.add_scalar('G/loss_G_cond_depth', loss_G_cond_depth_total.item()/n_valid_loop, step)
+
+                    # 識別器
+                    board_valid.add_scalar('D/loss_D', loss_D_total.item()/n_valid_loop, step)
+                    board_valid.add_scalar('D/loss_D_real', loss_D_real_total.item()/n_valid_loop, step)
+                    board_valid.add_scalar('D/loss_D_fake', loss_D_fake_total.item()/n_valid_loop, step)
+                    if( args.model_type_D == "ganimation" ):
+                        board_valid.add_scalar('D/loss_D_cond_depth', loss_D_cond_depth_total.item()/n_valid_loop, step)
 
                 step += 1
                 n_print -= 1
@@ -642,7 +660,7 @@ if __name__ == '__main__':
     # 可視化処理
     #================================
     # 最適なマスクスレッショルド値での IoU スコアの計算
-    thresholds = np.linspace(-1, 1, 100)  # IoU スコアの低い結果を除外するためのスレッショルド（-1.0 ~ 1.0 は生成マスク画像のピクセル値に対応）
+    thresholds = np.linspace(-0.95, 0.95, 100)  # IoU スコアの低い結果を除外するためのスレッショルド（-1.0 ~ 1.0 は生成マスク画像のピクセル値に対応）
     ious = np.array( [iou_metric_batch(y_pred_valid_mask, np.int32(y_pred_valid > threshold)) for threshold in thresholds] )
 
     threshold_best_index = np.argmax(ious[9:-10]) + 9
