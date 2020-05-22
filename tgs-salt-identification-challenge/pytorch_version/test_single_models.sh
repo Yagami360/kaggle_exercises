@@ -7,10 +7,12 @@ mkdir -p _logs
 #----------------------
 MODEL_TYPE_G=unet4
 #MODEL_TYPE_G=unet4bottleneck
+#MODEL_TYPE_G=unet4resnet34
 
 #EXPER_NAME=single_model_pytorch_unet4_ep200_b32_lr0.001_bce1.0_enpropy1.0_l10.0_vgg0.0_advlsgan_0.0
-EXPER_NAME=single_model_pytorch_unet4_ep200_b32_lr0.001_bce1.0_enpropy1.0_l10.0_vgg0.0_advlsgan_1.0
+#EXPER_NAME=single_model_pytorch_unet4_ep200_b32_lr0.001_bce1.0_enpropy1.0_l10.0_vgg0.0_advlsgan_1.0
 #EXPER_NAME=single_model_pytorch_unet4_da_ep200_b32_lr0.001_bce1.0_enpropy1.0_l10.0_vgg0.0_advlsgan_1.0
+EXPER_NAME=single_model_pytorch_unet4_ep200_b32_lr0.001_bce1.0_enpropy1.0_lovasz1.0_l10.0_vgg0.0_advlsgan_0.0
 
 LOAD_CHECKPOINTS_PATH_G=checkpoints/${EXPER_NAME}/model_final.pth
 

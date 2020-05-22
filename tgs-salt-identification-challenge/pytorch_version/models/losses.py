@@ -35,9 +35,11 @@ class ParsingCrossEntropyLoss(nn.Module):
 # VGG loss
 #=============================================
 class Vgg19(nn.Module):
-    def __init__(self, requires_grad=False):
+    def __init__(self, n_channels=3, requires_grad=False):
         super(Vgg19, self).__init__()
         vgg_pretrained_features = models.vgg19(pretrained=True).features
+        print(vgg_pretrained_features)
+        vgg_pretrained_features[0] = nn.Conv2d( n_in_channels, 64, kernel_size=3, stride=1, padding=0 )
         self.slice1 = torch.nn.Sequential()
         self.slice2 = torch.nn.Sequential()
         self.slice3 = torch.nn.Sequential()
@@ -67,9 +69,9 @@ class Vgg19(nn.Module):
         return out
 
 class VGGLoss(nn.Module):
-    def __init__(self, device, layids = None,  ):
+    def __init__(self, device, n_channels = 3, layids = None ):
         super(VGGLoss, self).__init__()
-        self.vgg = Vgg19().to(device)
+        self.vgg = Vgg19(n_channels=n_channels).to(device)
         self.criterion = nn.L1Loss()
         self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
         self.layids = layids
@@ -230,8 +232,8 @@ class LovaszSoftmaxLoss(nn.Module):
     def forward(self, y_true, y_pred ):
         # logits: [B, H, W] Variable, logits at each pixel (between -\infty and +\infty)
         # labels: [B, H, W] Tensor, binary ground truth masks (0 or 1)
-        logits = y_pred[:,0:,:,:].float()        
-        labels = ( (y_true[:,0:,:,:]+1)*0.5 ).int()
+        logits = y_pred[:,0,:,:].float()        
+        labels = ( (y_true[:,0,:,:]+1)*0.5 ).int()
 
         loss_lovasz_softmax = lovasz_hinge( logits, labels )
         return loss_lovasz_softmax

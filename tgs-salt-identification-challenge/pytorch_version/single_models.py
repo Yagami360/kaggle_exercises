@@ -265,7 +265,7 @@ if __name__ == '__main__':
     # loss_G 関数の設定
     #================================
     loss_l1_fn = nn.L1Loss()
-    loss_vgg_fn = VGGLoss(device)
+    loss_vgg_fn = VGGLoss(device, args.n_channels)
     loss_entropy_fn = ParsingCrossEntropyLoss()
     loss_bce_fn = nn.BCEWithLogitsLoss()
     loss_lovasz_softmax_fn = LovaszSoftmaxLoss()
@@ -372,19 +372,12 @@ if __name__ == '__main__':
                 #----------------------------------------------------
                 # 損失関数を計算する
                 loss_l1 = loss_l1_fn( output, mask )
-                if( args.n_channels == 3 ):
-                    loss_vgg = loss_vgg_fn( output, mask )
-
+                loss_vgg = loss_vgg_fn( output, mask )
                 loss_entropy = loss_entropy_fn( output, mask )
                 loss_bce = loss_bce_fn( output, mask )
                 loss_lovasz_softmax = loss_lovasz_softmax_fn( mask, output_none_act )
                 loss_adv = loss_adv_fn.forward_G( d_fake )
-
-                if( args.n_channels == 3 ):
-                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_lovasz_softmax * loss_lovasz_softmax + args.lambda_adv * loss_adv
-                else:
-                    loss_G = args.lambda_l1 * loss_l1 + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_lovasz_softmax * loss_lovasz_softmax + args.lambda_adv * loss_adv
-
+                loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_lovasz_softmax * loss_lovasz_softmax + args.lambda_adv * loss_adv
                 if( args.model_type_D == "ganimation" ):
                     loss_G_cond_depth = loss_cond_fn( d_real_depth, depth[:,:,0,0] ) + loss_cond_fn( d_fake_depth, depth[:,:,0,0] )
                     loss_G = loss_G + args.lambda_cond * loss_G_cond_depth
@@ -400,8 +393,7 @@ if __name__ == '__main__':
                 if( step == 0 or ( step % args.n_diaplay_step == 0 ) ):
                     board_train.add_scalar('G/loss_G', loss_G.item(), step)
                     board_train.add_scalar('G/loss_l1', loss_l1.item(), step)
-                    if( args.n_channels == 3 ):
-                        board_train.add_scalar('G/loss_vgg', loss_vgg.item(), step)
+                    board_train.add_scalar('G/loss_vgg', loss_vgg.item(), step)
                     board_train.add_scalar('G/loss_entropy', loss_entropy.item(), step)
                     board_train.add_scalar('G/loss_bce', loss_bce.item(), step)
                     board_train.add_scalar('G/loss_lovasz_softmax', loss_lovasz_softmax.item(), step)
@@ -415,19 +407,11 @@ if __name__ == '__main__':
                     if( args.model_type_D == "ganimation" ):
                         board_train.add_scalar('D/loss_D_cond_depth', loss_D_cond_depth.item(), step)
 
-                    if( args.n_channels == 3 ):
-                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_lovasz_softmax={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_bce, loss_lovasz_softmax, loss_adv) )
-                        print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
-                        if( args.model_type_D == "ganimation" ):
-                            print( "step={}, loss_G_cond_depth={:.5f}".format(step, loss_G_cond_depth,) )
-                            print( "step={}, loss_D_cond_depth={:.5f}".format(step, loss_D_cond_depth,) )
-
-                    else:
-                        print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_lovasz_softmax={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_entropy, loss_bce, loss_lovasz_softmax, loss_adv) )
-                        print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
-                        if( args.model_type_D == "ganimation" ):
-                            print( "step={}, loss_G_cond_depth={:.5f}".format(step, loss_G_cond_depth,) )
-                            print( "step={}, loss_D_cond_depth={:.5f}".format(step, loss_D_cond_depth,) )
+                    print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_lovasz_softmax={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_bce, loss_lovasz_softmax, loss_adv) )
+                    print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
+                    if( args.model_type_D == "ganimation" ):
+                        print( "step={}, loss_G_cond_depth={:.5f}".format(step, loss_G_cond_depth,) )
+                        print( "step={}, loss_D_cond_depth={:.5f}".format(step, loss_D_cond_depth,) )
 
                     visuals = [
                         [image, mask, output],
@@ -513,8 +497,7 @@ if __name__ == '__main__':
                         # total
                         loss_G_total += loss_G
                         loss_l1_total += loss_l1
-                        if( args.n_channels == 3 ):
-                            loss_vgg_total += loss_vgg
+                        loss_vgg_total += loss_vgg
                         loss_entropy_total += loss_entropy
                         loss_bce_total += loss_bce
                         loss_lovasz_softmax_total += loss_lovasz_softmax
@@ -542,8 +525,7 @@ if __name__ == '__main__':
                     # 生成器
                     board_valid.add_scalar('G/loss_G', loss_G_total.item()/n_valid_loop, step)
                     board_valid.add_scalar('G/loss_l1', loss_l1_total.item()/n_valid_loop, step)
-                    if( args.n_channels == 3 ):
-                        board_valid.add_scalar('G/loss_vgg', loss_vgg_total.item()/n_valid_loop, step)
+                    board_valid.add_scalar('G/loss_vgg', loss_vgg_total.item()/n_valid_loop, step)
                     board_valid.add_scalar('G/loss_entropy', loss_entropy_total.item()/n_valid_loop, step)
                     board_valid.add_scalar('G/loss_bce', loss_bce_total.item()/n_valid_loop, step)
                     board_valid.add_scalar('G/loss_lovasz_softmax', loss_lovasz_softmax_total.item()/n_valid_loop, step)
@@ -590,14 +572,14 @@ if __name__ == '__main__':
         # 生成器 G の 推論処理
         with torch.no_grad():
             if( args.model_type_G in ["unet4bottleneck"] ):
-                    output = model_G( image, depth )
+                    output, output_mask, output_none_act = model_G( image, depth )
             else:
                 if( args.depth ):
                     depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
                     concat = torch.cat( [image, depth], dim=1)
-                    output = model_G( concat )
+                    output, output_mask, output_none_act = model_G( concat )
                 else:
-                    output = model_G( image )
+                    output, output_mask, output_none_act = model_G( image )
 
             y_pred_valid.append( output[0].detach().cpu().numpy() )
             y_pred_valid_mask.append( mask[0].detach().cpu().numpy() )
@@ -627,14 +609,14 @@ if __name__ == '__main__':
         # 生成器 G の 推論処理
         with torch.no_grad():
             if( args.model_type_G in ["unet4bottleneck"] ):
-                    output = model_G( image, depth )
+                    output, output_mask, output_none_act = model_G( image, depth )
             else:
                 if( args.depth ):
                     depth = depth.expand(depth.shape[0], depth.shape[1], image.shape[2], image.shape[3] )
                     concat = torch.cat( [image, depth], dim=1)
-                    output = model_G( concat )
+                    output, output_mask, output_none_act = model_G( concat )
                 else:
-                    output = model_G( image )
+                    output, output_mask, output_none_act = model_G( image )
 
             y_pred_test.append( output[0].detach().cpu().numpy() )
 

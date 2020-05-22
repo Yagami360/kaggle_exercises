@@ -1,8 +1,8 @@
 #!/bin/sh
-#nohup sh train_single_models.sh > _logs/train_single_models_1.out &
-#nohup sh train_single_models.sh poweroff > _logs/train_single_models_2.out &
-#nohup sh train_single_models.sh > _logs/train_single_models_5.out &
-#nohup sh train_single_models.sh poweroff > _logs/train_single_models_7.out &
+#nohup sh train_single_models.sh > _logs/train_single_models_8.out &
+#nohup sh train_single_models.sh poweroff > _logs/train_single_models_9.out &
+#nohup sh train_single_models.sh > _logs/train_single_models_10.out &
+#nohup sh train_single_models.sh poweroff > _logs/train_single_models_11.out &
 #set -e
 mkdir -p _logs
 
@@ -24,14 +24,15 @@ EXPER_NAME=debug
 #rm -rf tensorboard/${EXPER_NAME}
 
 python single_models.py \
-    --exper_name ${EXPER_NAME} \
     --train_mode train \
     --model_type_G ${MODEL_TYPE_G} --model_type_D ${MODEL_TYPE_D} \
     --n_epoches ${N_EPOCHES} --batch_size ${BATCH_SIZE} \
-    --lambda_bce 1.0 --lambda_enpropy 1.0 --lambda_lovasz_softmax 1.0  --lambda_l1 0.0 --lambda_adv 0.0 --lambda_cond 0.0 \
-    --debug
+    --lambda_bce 0.0 --lambda_enpropy 0.0 --lambda_lovasz_softmax 1.0 --lambda_l1 0.1 --lambda_adv 0.0 --lambda_cond 0.0 \
+    --debug \
+    --submit
 
 #    --data_augument \
+#    --exper_name ${EXPER_NAME} \
 
 if [ $1 = "poweroff" ] ; then
     sudo poweroff
