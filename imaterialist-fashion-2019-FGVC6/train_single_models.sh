@@ -7,6 +7,8 @@ mkdir -p _logs
 # model
 #----------------------
 MODEL_TYPE_G=unet4
+#MODEL_TYPE_G=unet4resnet34
+#MODEL_TYPE_G=mgvton
 MODEL_TYPE_D=patchgan
 
 N_EPOCHES=2
@@ -20,6 +22,7 @@ python single_models.py \
     --model_type_G ${MODEL_TYPE_G} --model_type_D ${MODEL_TYPE_D} \
     --n_epoches ${N_EPOCHES} --batch_size ${BATCH_SIZE} \
     --image_height 256 --image_width 192 --n_channels 3 \
+    --n_workers 0 \
     --debug
 
 #    --data_augument \

@@ -48,7 +48,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="imaterialist-fashion-2019-FGVC6")
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
-    parser.add_argument("--model_type_G", choices=["unet4"], default="unet4", help="生成器モデルの種類")
+    parser.add_argument("--model_type_G", choices=["unet4", "unet4resnet34", "mgvton", "ganimation"], default="unet4", help="生成器モデルの種類")    
     parser.add_argument("--model_type_D", choices=["patchgan"], default="patchgan", help="識別器モデルの種類")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument('--load_checkpoints_path_G', type=str, default="", help="生成器モデルの読み込みファイルのパス")
@@ -61,19 +61,17 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.001, help="学習率")
     parser.add_argument('--beta1', type=float, default=0.5, help="学習率の減衰率")
     parser.add_argument('--beta2', type=float, default=0.999, help="学習率の減衰率")
-    parser.add_argument('--image_height_org', type=int, default=1024, help="入力画像の高さ（pixel単位）")
-    parser.add_argument('--image_width_org', type=int, default=1024, help="入力画像の幅（pixel単位）")
     parser.add_argument('--image_height', type=int, default=256, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=192, help="入力画像の幅（pixel単位）")
     parser.add_argument("--n_channels", type=int, default=3, help="チャンネル数") 
-    parser.add_argument("--n_classes", type=int, default=47, help="ラベル数")   
+    parser.add_argument("--n_classes", type=int, default=92, help="ラベル数")   
     parser.add_argument("--n_samplings", type=int, default=100000, help="ラベル数")
     parser.add_argument('--data_augument', action='store_true')
 
     parser.add_argument('--lambda_bce', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
     parser.add_argument('--lambda_enpropy', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
-    parser.add_argument('--lambda_l1', type=float, default=0.0, help="L1損失関数の係数値")
-    parser.add_argument('--lambda_vgg', type=float, default=0.0, help="VGG perceptual loss_G の係数値")
+    parser.add_argument('--lambda_l1', type=float, default=5.0, help="L1損失関数の係数値")
+    parser.add_argument('--lambda_vgg', type=float, default=5.0, help="VGG perceptual loss_G の係数値")
     parser.add_argument('--lambda_adv', type=float, default=1.0, help="Adv loss_G の係数値")
     parser.add_argument('--adv_loss_type', choices=['vanilla', 'lsgan', 'hinge'], default="lsgan", help="GAN Adv loss の種類")
 
@@ -116,6 +114,12 @@ if __name__ == '__main__':
         os.mkdir(args.results_dir)
     if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
         os.mkdir(os.path.join(args.results_dir, args.exper_name))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "test"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test", "images") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "test", "images"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test", "masks") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "test", "masks"))
     if( args.train_mode in ["train"] ):
         if not( os.path.exists(args.save_checkpoints_dir) ):
             os.mkdir(args.save_checkpoints_dir)
@@ -191,13 +195,20 @@ if __name__ == '__main__':
     #================================
     # 生成器
     if( args.model_type_G == "unet4" ):
-        #model_G = UNet4( n_in_channels = 3, n_out_channels = args.n_channels, n_fmaps = 64 ).to( device )
-        model_G = UNet4( n_in_channels = 3, n_out_channels = args.n_classes, n_fmaps = 64 ).to( device )
+        model_G = UNet4( n_in_channels = 3, n_out_channels = args.n_channels, n_fmaps = 64 ).to( device )
+        #model_G = UNet4( n_in_channels = 3, n_out_channels = args.n_classes, n_fmaps = 64 ).to( device )
+    elif( args.model_type_G == "unet4resnet34" ):
+        model_G = UNet4ResNet34( n_in_channels = 3, n_out_channels = args.n_channels, n_fmaps = 64,).to( device )
+    elif( args.model_type_G == "mgvton" ):
+        model_G = MGVTONResGenerator( input_nc = 3, output_nc = args.n_channels, padding_type='zero', affine=False ).to( device )
+        #model_G = MGVTONResGenerator( input_nc = 3, output_nc = args.n_channels, padding_type='reflect', affine=True ).to( device )
+    elif( args.model_type_G == "ganimation" ):
+        model_G = GANimationGenerator( input_nc = 3, output_nc = args.n_channels, conv_dim = 64 ).to( device )
 
     # 識別器
     if( args.model_type_D == "patchgan" ):
-        #model_D = PatchGANDiscriminator( n_in_channels = args.n_channels, n_fmaps = 64 ).to( device )
-        model_D = PatchGANDiscriminator( n_in_channels = args.n_classes, n_fmaps = 64 ).to( device )
+        model_D = PatchGANDiscriminator( n_in_channels = args.n_channels, n_fmaps = 64 ).to( device )
+        #model_D = PatchGANDiscriminator( n_in_channels = args.n_classes, n_fmaps = 64 ).to( device )
 
     if( args.debug ):
         print( "model_G :\n", model_G )
@@ -350,7 +361,7 @@ if __name__ == '__main__':
                     loss_adv_total = 0
                     loss_D_total, loss_D_real_total, loss_D_fake_total = 0, 0, 0
                     n_valid_loop = 0
-                    for iter, inputs in enumerate(dloader_valid):
+                    for iter, inputs in enumerate( tqdm(dloader_valid) ):
                         model_G.eval()            
                         model_D.eval()    
 
@@ -440,32 +451,6 @@ if __name__ == '__main__':
         print("Finished Training Loop.")
 
     #================================
-    # 学習用データでの推論処理
-    #================================
-    print("Starting eval Valid Loop...")
-    y_pred_valid = []
-    y_pred_valid_mask = []
-    model_G.eval()
-    for step, inputs in enumerate( tqdm( dloader_valid, desc = "Samplings" ) ):
-        if inputs["image"].shape[0] != args.batch_size_valid:
-            break
-
-        image = inputs["image"].to(device)
-        mask = inputs["mask"].to(device)
-
-        # 生成器 G の 推論処理
-        with torch.no_grad():
-            output, output_mask, output_none_act = model_G( image )
-            y_pred_valid.append( output[0].detach().cpu().numpy() )
-            y_pred_valid_mask.append( mask[0].detach().cpu().numpy() )
-
-    y_pred_valid = np.array( y_pred_valid )
-    y_pred_valid_mask = np.array( y_pred_valid_mask )
-    if( args.debug ):
-        print( "type(y_pred_valid) : ", type(y_pred_valid) )
-        print( "y_pred_valid.shape : ", y_pred_valid.shape )
-
-    #================================
     # テスト用データでの推論処理
     #================================
     print("Starting eval Test Loop...")
@@ -504,43 +489,26 @@ if __name__ == '__main__':
         print( "y_pred_test.shape : ", y_pred_test.shape )
 
     #================================
-    # 可視化処理
-    #================================
-    # 最適なマスクスレッショルド値での IoU スコアの計算
-    thresholds = np.linspace(-0.95, 0.95, 100)  # IoU スコアの低い結果を除外するためのスレッショルド（-1.0 ~ 1.0 は生成マスク画像のピクセル値に対応）
-    ious = np.array( [iou_metric_batch(y_pred_valid_mask, np.int32(y_pred_valid > threshold)) for threshold in thresholds] )
-
-    threshold_best_index = np.argmax(ious[9:-10]) + 9
-    iou_best = ious[threshold_best_index]
-    threshold_best = thresholds[threshold_best_index]
-    print( "iou_best = {:0.4f} ".format(iou_best) )
-    print( "threshold_best = {:0.4f} ".format(threshold_best) )
-
-    fig, axs = plt.subplots()
-    axs.plot(thresholds, ious)
-    axs.plot(threshold_best, iou_best, "xr", label="Best threshold")
-    plt.xlabel("Threshold (mask pixel value)")
-    plt.ylabel("IoU")
-    plt.title("Threshold vs IoU ({}, {})".format(threshold_best, iou_best))
-    plt.grid()
-    plt.legend()
-    plt.savefig( os.path.join(args.results_dir, args.exper_name, "IoU_mask_threshold.png"), dpi = 300, bbox_inches = 'tight' )
-
-    #================================
     # Kaggle API での submit
     #================================
     # RLE [Run Length Encoding] 形式で提出のため生成画像を元の画像サイズに変換
-    y_pred_test_org = np.zeros( (len(y_pred_test), args.image_height_org, args.image_width_org), dtype=np.float32 )
-    for i in range(len(y_pred_test)):
-        y_pred_test_org[i] = cv2.resize( y_pred_test[i,0,:,:].squeeze(), (args.image_height_org, args.image_width_org), interpolation = cv2.INTER_NEAREST )
-        #y_pred_test_org[i] = resize( y_pred_test[i,0,:,:].squeeze(), (args.image_height_org, args.image_width_org), mode='constant', preserve_range=True )
+    encoded_pixels = []
+    class_ids = []
+    for i,name in enumerate(test_image_names):
+        # 元の解像度への resize
+        image_height_org = ds_test.df_test.loc[name]["Height"]
+        image_width_org = ds_test.df_test.loc[name]["Width"]
+        #print( "image_height_org={}, image_width_org={}".format(image_height_org, image_width_org) )
+        y_pred_test_org = cv2.resize( y_pred_test[i,0,:,:].squeeze(), (image_height_org, image_width_org), interpolation = cv2.INTER_NEAREST )
 
-    # 提出用データに値を設定
-    #threshold_best = 0.0
-    y_sub = { name.split(".png")[0] : convert_rle(np.round(y_pred_test_org[i] > threshold_best)) for i,name in enumerate(test_image_names) }
-    df_submission = pd.DataFrame.from_dict( y_sub, orient='index' )
+        # RLE の計算
+        encoded_pixels.append( convert_rle(np.round(y_pred_test_org)) )
+
+        # クラスラベル
+        class_ids.append(0)   # dummy
+
+    df_submission = pd.DataFrame( {'EncodedPixels' : encoded_pixels, 'ClassId' : class_ids}, index = test_image_names )
     df_submission.index.names = ['ImageId']
-    df_submission.columns = ['EncodedPixels']
     df_submission.to_csv( os.path.join(args.results_dir, args.exper_name, args.submit_file) )
 
     if( args.submit ):
