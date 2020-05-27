@@ -61,7 +61,7 @@ def save_image_w_norm( img_tsr, save_img_paths ):
     """
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5) 正規化した Tensor を画像として保存する。
     """
-    img_tsr = (img_tsr.clone()+1)*0.5 * 255
+    img_tsr = (img_tsr.clone()+1) * 0.5 * 255
     img_tsr = img_tsr.cpu().clamp(0,255)
 
     img_np = img_tsr.detach().numpy().astype('uint8')
@@ -113,6 +113,28 @@ def convert_rle(img, order='F', format=True):
         return z[:-1]
     else:
         return runs
+
+def split_masks( mask_np, n_classes = 92, threshold = 50 ):
+    """
+    １枚の画像中に複数のラベル値があるマスク画像を、各々のクラスラベルでの別々のマスク画像に分割する
+    """
+    # float -> int8
+    mask_np = np.uint8(mask_np)
+    if( len(mask_np.shape) == 3 ):
+        mask_np = mask_np[:,:,0]
+
+    # 各々のクラスラベルでの別々のマスク画像
+    new_masks = []
+    class_ids = []
+    for i in range(1,n_classes):
+        # label i の画像のみ抽出
+        label_i = (mask_np == i).astype(np.int32)
+        if( np.sum(label_i) >= threshold ):
+            new_masks.append( label_i * i )
+            class_ids.append( i )
+
+    return new_masks, class_ids
+
 
 #====================================================
 # TensorBoard への出力関連

@@ -10,6 +10,7 @@ MODEL_TYPE_G=unet4
 
 EXPER_NAME=debug
 LOAD_CHECKPOINTS_PATH_G=checkpoints/${EXPER_NAME}/model_final.pth
+rm -r results/test_${EXPER_NAME}
 
 python single_models.py \
     --exper_name test_${EXPER_NAME} \

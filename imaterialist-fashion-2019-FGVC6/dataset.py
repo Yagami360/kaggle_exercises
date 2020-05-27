@@ -67,10 +67,31 @@ class ImaterialistDataset(data.Dataset):
                     transforms.Normalize( mean, std ),
                 ]
             )
+
+            self.transform_mask = transforms.Compose(
+                [
+                    transforms.Resize( (args.image_height, args.image_width), interpolation=Image.NEAREST ),
+#                    transforms.RandomResizedCrop( (args.image_height, args.image_width) ),
+                    transforms.RandomHorizontalFlip(),
+#                    transforms.RandomVerticalFlip(),
+#                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
+                    transforms.CenterCrop( size = (args.image_height, args.image_width) ),
+                    transforms.ToTensor(),
+                    transforms.Normalize( mean, std ),
+                ]
+            )
         else:
             self.transform = transforms.Compose(
                 [
                     transforms.Resize( (args.image_height, args.image_width), interpolation=Image.LANCZOS ),
+                    transforms.CenterCrop( size = (args.image_height, args.image_width) ),
+                    transforms.ToTensor(),
+                    transforms.Normalize( mean, std ),
+                ]
+            )
+            self.transform_mask = transforms.Compose(
+                [
+                    transforms.Resize( (args.image_height, args.image_width), interpolation=Image.NEAREST ),
                     transforms.CenterCrop( size = (args.image_height, args.image_width) ),
                     transforms.ToTensor(),
                     transforms.Normalize( mean, std ),
@@ -157,7 +178,7 @@ class ImaterialistDataset(data.Dataset):
             if( self.data_augument ):
                 set_random_seed( self.seed_da )
 
-            mask = self.transform(mask)
+            mask = self.transform_mask(mask)
 
         if( self.datamode == "train" ):
             results_dict = {

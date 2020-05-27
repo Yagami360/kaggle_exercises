@@ -24,6 +24,8 @@ git_pull_reset.sh
 */*/checkpoints/*
 */*/tensorboard/*
 */*/catboost_info/*
+*/_debug/*
+*/debug/*
 
 titanic/datasets/*
 titanic/results/*

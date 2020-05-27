@@ -32,7 +32,7 @@ from tensorboardX import SummaryWriter
 
 # 自作モジュール
 from dataset import ImaterialistDataset, ImaterialistDataLoader
-from models import UNet4, UNet4ResNet34, UNetFGVC6, GANimationGenerator, MGVTONResGenerator
+from models import UNet4, UNet4ResNet34, GANimationGenerator, MGVTONResGenerator
 from models import PatchGANDiscriminator, MultiscaleDiscriminator, GANimationDiscriminator
 from models import ParsingCrossEntropyLoss, LovaszSoftmaxLoss, VGGLoss, VanillaGANLoss, LSGANLoss, HingeGANLoss, ConditionalExpressionLoss
 from utils import save_checkpoint, load_checkpoint, convert_rle
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="imaterialist-fashion-2019-FGVC6")
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
-    parser.add_argument("--model_type_G", choices=["unet4", "unet4resnet34", "unet_fgvc6", "mgvton", "ganimation"], default="unet4", help="生成器モデルの種類")    
+    parser.add_argument("--model_type_G", choices=["unet4", "unet4resnet34", "mgvton", "ganimation"], default="unet4", help="生成器モデルの種類")    
     parser.add_argument("--model_type_D", choices=["patchgan"], default="patchgan", help="識別器モデルの種類")
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument('--load_checkpoints_path_G', type=str, default="", help="生成器モデルの読み込みファイルのパス")
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     parser.add_argument('--image_height', type=int, default=256, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=192, help="入力画像の幅（pixel単位）")
     parser.add_argument("--n_channels", type=int, default=3, help="チャンネル数") 
-    parser.add_argument("--n_classes", type=int, default=47, help="ラベル数")   
+    parser.add_argument("--n_classes", type=int, default=92, help="ラベル数")   
     parser.add_argument("--n_samplings", type=int, default=100000, help="ラベル数")
     parser.add_argument('--data_augument', action='store_true')
 
@@ -198,18 +198,19 @@ if __name__ == '__main__':
     # 生成器
     if( args.model_type_G == "unet4" ):
         model_G = UNet4( n_in_channels = 3, n_out_channels = args.n_channels, n_fmaps = 64 ).to( device )
+        #model_G = UNet4( n_in_channels = 3, n_out_channels = args.n_classes, n_fmaps = 64 ).to( device )
     elif( args.model_type_G == "unet4resnet34" ):
         model_G = UNet4ResNet34( n_in_channels = 3, n_out_channels = args.n_channels, n_fmaps = 64,).to( device )
-    elif( args.model_type_G == "unet_fgvc6" ):
-        model_G = UNetFGVC6( n_channels = 3, n_classes = args.n_channels).to( device )
     elif( args.model_type_G == "mgvton" ):
         model_G = MGVTONResGenerator( input_nc = 3, output_nc = args.n_channels, padding_type='zero', affine=False ).to( device )
+        #model_G = MGVTONResGenerator( input_nc = 3, output_nc = args.n_channels, padding_type='reflect', affine=True ).to( device )
     elif( args.model_type_G == "ganimation" ):
         model_G = GANimationGenerator( input_nc = 3, output_nc = args.n_channels, conv_dim = 64 ).to( device )
 
     # 識別器
     if( args.model_type_D == "patchgan" ):
         model_D = PatchGANDiscriminator( n_in_channels = args.n_channels, n_fmaps = 64 ).to( device )
+        #model_D = PatchGANDiscriminator( n_in_channels = args.n_classes, n_fmaps = 64 ).to( device )
 
     if( args.debug ):
         print( "model_G :\n", model_G )
@@ -283,8 +284,7 @@ if __name__ == '__main__':
                 # 生成器 の forword 処理
                 #----------------------------------------------------
                 # 学習用データをモデルに流し込む
-                #output = model_G( image )
-                output, output_mask, output_none_act = model_G( image )
+                output = model_G( image )
                 if( args.debug and n_print > 0 ):
                     print( "output.shape :", output.shape )
                     
@@ -296,12 +296,8 @@ if __name__ == '__main__':
                     param.requires_grad = True
 
                 # 学習用データをモデルに流し込む
-                """
                 d_real = model_D( output )
                 d_fake = model_D( output.detach() )
-                """
-                d_real = model_D( output_mask )
-                d_fake = model_D( output_mask.detach() )
                 if( args.debug and n_print > 0 ):
                     print( "d_real.shape :", d_real.shape )
                     print( "d_fake.shape :", d_fake.shape )
@@ -322,17 +318,10 @@ if __name__ == '__main__':
                 # 生成器の更新処理
                 #----------------------------------------------------
                 # 損失関数を計算する
-                """
                 loss_l1 = loss_l1_fn( output, mask )
                 loss_vgg = loss_vgg_fn( output, mask )
                 loss_entropy = loss_entropy_fn( output, mask )
                 loss_bce = loss_bce_fn( output, mask )
-                """
-                loss_l1 = loss_l1_fn( output_mask, mask )
-                loss_vgg = loss_vgg_fn( output_mask, mask )
-                loss_entropy = loss_entropy_fn( output_mask, mask )
-                loss_bce = loss_bce_fn( output_mask, mask )
-
                 loss_adv = loss_adv_fn.forward_G( d_fake )
                 loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
 
@@ -359,13 +348,8 @@ if __name__ == '__main__':
                     print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_bce, loss_adv) )
                     print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
 
-                    """
                     visuals = [
                         [image, mask, output],
-                    ]
-                    """
-                    visuals = [
-                        [image, mask, output, output_mask, output_none_act],
                     ]
                     board_add_images(board_train, 'train', visuals, step+1)
 
@@ -397,30 +381,20 @@ if __name__ == '__main__':
                         #====================================================
                         # 生成器
                         with torch.no_grad():
-                            #output = model_G( image )
-                            output, output_mask, output_none_act = model_G( image )
+                            output = model_G( image )
 
                         # 識別器
                         with torch.no_grad():
-                            """
                             d_real = model_D( output )
                             d_fake = model_D( output.detach() )
-                            """
-                            d_real = model_D( output_mask )
-                            d_fake = model_D( output_mask.detach() )
 
                         #----------------------------------------------------
                         # 損失関数の計算
                         #----------------------------------------------------
                         # 生成器
-                        """
                         loss_l1 = loss_l1_fn( output, mask )
                         loss_entropy = loss_entropy_fn( output, mask )
                         loss_bce = loss_bce_fn( output, mask )
-                        """
-                        loss_l1 = loss_l1_fn( output_mask, mask )
-                        loss_entropy = loss_entropy_fn( output_mask, mask )
-                        loss_bce = loss_bce_fn( output_mask, mask )
                         loss_adv = loss_adv_fn.forward_G( d_fake )
                         loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
  
@@ -441,13 +415,8 @@ if __name__ == '__main__':
 
                         # 
                         if( iter <= args.batch_size ):
-                            """
                             visuals = [
                                 [image, mask, output],
-                            ]
-                            """
-                            visuals = [
-                                [image, mask, output, output_mask, output_none_act],
                             ]
                             board_add_images(board_valid, 'valid/{}'.format(iter), visuals, step+1)
 
@@ -500,10 +469,8 @@ if __name__ == '__main__':
 
         # 生成器 G の 推論処理
         with torch.no_grad():
-            #output = model_G( image )
-            output, output_mask, output_none_act = model_G( image )
-            y_pred_test.append( ( (output_mask[0].detach().cpu().numpy()) * 255 ).astype('uint8') )
-            #y_pred_test.append( ( (output[0].detach().cpu().numpy() + 1.0) * 0.5 * 255 ).astype('uint8') )
+            output = model_G( image )
+            y_pred_test.append( output[0].detach().cpu().numpy() )
 
         n_display_images = 50
         if( step <= n_display_images ):
@@ -531,30 +498,40 @@ if __name__ == '__main__':
     encoded_pixels = []
     class_ids = []
     for i,name in enumerate(test_image_names):
+        # 元の解像度への resize
+        image_height_org = ds_test.df_test.loc[name]["Height"]
+        image_width_org = ds_test.df_test.loc[name]["Width"]
+        #print( "image_height_org={}, image_width_org={}".format(image_height_org, image_width_org) )
+        y_pred_test_org = cv2.resize( y_pred_test[i,0,:,:].squeeze(), (image_height_org, image_width_org), interpolation = cv2.INTER_NEAREST )
+
         # 複数のマスク画像に分割
-        test_mask_splits, class_ids = split_masks( mask_np = y_pred_test[i,0,:,:].squeeze(), n_classes = args.n_classes, threshold = 0 )
-        print( "name={}, len(test_mask_splits)={}, class_ids={}".format(name, len(test_mask_splits), class_ids) )
-        for j, label in enumerate(class_ids):
-            # 元の解像度への resize
-            image_height_org = ds_test.df_test.loc[name]["Height"]
-            image_width_org = ds_test.df_test.loc[name]["Width"]
-            #print( "image_height_org={}, image_width_org={}".format(image_height_org, image_width_org) )
-            #print( "test_mask_splits[{}].shape : {}".format(j,test_mask_splits[j].shape) )
-            y_pred_test_org = cv2.resize( test_mask_splits[j], (image_height_org, image_width_org), interpolation = cv2.INTER_NEAREST )
+        """
+        if( args.debug and args.train_mode == "test" ):
+            for iter, inputs in enumerate( dloader_train ):
+                test_mask = inputs["mask"][0].to(device)
+                if( iter == 0 ):
+                    break
 
-            # 画像ファイル名
-            image_names.append(name)
+            #print( "test_mask.shape : ", test_mask.shape )
+            test_mask_np = ((test_mask+1)*0.5*255).detach().cpu().numpy().transpose(1,2,0)
+            #print( "test_mask_np.shape : ", test_mask_np.shape )
+            test_mask_pillow = Image.fromarray( np.uint8(test_mask_np[:,:,0]) )
+            test_mask_pillow.save( "_debug/test_mask.png" )
 
-            # RLE の計算
-            encoded_pixels.append( convert_rle(np.round(y_pred_test_org)) )
+            test_mask_splits, class_ids = split_masks( mask_np = test_mask_np, n_classes = args.n_classes  )
+            for j, label in enumerate(class_ids):
+                test_mask_pillow_label = Image.fromarray( np.uint8(test_mask_splits[j]) )
+                test_mask_pillow_label.save( "_debug/test_mask_{}.png".format(label) )
+        """
+        
+        # 画像ファイル名
+        image_names.append(name)
 
-            # クラスラベル
-            class_ids.append(label)
+        # RLE の計算
+        encoded_pixels.append( convert_rle(np.round(y_pred_test_org)) )
 
-            # ラベル別画像の保存
-            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "masks", name.split(".png")[0] + "_{}.png".format(label) ), y_pred_test_org ) 
-            if( j >= len(test_mask_splits) - 1):
-                break
+        # クラスラベル
+        class_ids.append(0)   # dummy
 
     df_submission = pd.DataFrame( {'EncodedPixels' : encoded_pixels, 'ClassId' : class_ids}, index = image_names )
     df_submission.index.names = ['ImageId']
