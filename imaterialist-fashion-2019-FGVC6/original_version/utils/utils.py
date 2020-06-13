@@ -114,7 +114,7 @@ def convert_rle(img, order='F', format=True):
     else:
         return runs
 
-def split_masks( mask_np, n_classes = 92, threshold = 50 ):
+def split_masks( mask_np, n_classes, threshold = 50 ):
     """
     １枚の画像中に複数のラベル値があるマスク画像を、各々のクラスラベルでの別々のマスク画像に分割する
     """
@@ -134,6 +134,16 @@ def split_masks( mask_np, n_classes = 92, threshold = 50 ):
             class_ids.append( i )
 
     return new_masks, class_ids
+
+def concat_masks( mask_np, n_classes ):
+    """
+    各ラベルがチャンネルに分かれているマスク画像を、１枚の画像中に複数のラベル値があるマスク画像に変換する
+    """
+    new_mask = np.zeros( (mask_np.shape[0], mask_np.shape[1]) )
+    for i in range(n_classes):
+        new_mask += mask_np[:,:,i]
+
+    return new_mask
 
 
 #====================================================

@@ -361,7 +361,7 @@ class UNetFGVC6(nn.Module):
         x = self.up4(x, x1)
         x_none_act = self.outc(x)
         x = self.activate_tanh(x_none_act)
-        x_mask = self.activate_tanh(x_none_act)
+        x_mask = self.activate_sigmoid(x_none_act)
         return x, x_mask, x_none_act
 
 #====================================

@@ -43,7 +43,7 @@ from utils import split_masks
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--exper_name", default="single_model", help="実験名")
-    parser.add_argument("--dataset_dir", type=str, default="datasets")
+    parser.add_argument("--dataset_dir", type=str, default="../datasets")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="imaterialist-fashion-2019-FGVC6")
