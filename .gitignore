@@ -26,6 +26,7 @@ git_pull_reset.sh
 */*/catboost_info/*
 */_debug/*
 */debug/*
+*/*/_debug/*
 
 titanic/datasets/*
 titanic/results/*

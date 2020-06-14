@@ -65,8 +65,8 @@ class ImaterialistDataset(data.Dataset):
                     transforms.Resize( (args.image_height, args.image_width), interpolation=Image.LANCZOS ),
 #                    transforms.RandomResizedCrop( (args.image_height, args.image_width) ),
                     transforms.RandomHorizontalFlip(),
-#                    transforms.RandomVerticalFlip(),
-#                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
                     transforms.CenterCrop( size = (args.image_height, args.image_width) ),
                     transforms.ToTensor(),
                     transforms.Normalize( mean, std ),
@@ -78,10 +78,22 @@ class ImaterialistDataset(data.Dataset):
                     transforms.Resize( (args.image_height, args.image_width), interpolation=Image.NEAREST ),
 #                    transforms.RandomResizedCrop( (args.image_height, args.image_width) ),
                     transforms.RandomHorizontalFlip(),
-#                    transforms.RandomVerticalFlip(),
-#                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
                     transforms.CenterCrop( size = (args.image_height, args.image_width) ),
-#                    transforms.ToTensor(),
+                ]
+            )
+
+            self.transform_mask_float = transforms.Compose(
+                [
+                    transforms.Resize( (args.image_height, args.image_width), interpolation=Image.NEAREST ),
+#                    transforms.RandomResizedCrop( (args.image_height, args.image_width) ),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
+                    transforms.CenterCrop( size = (args.image_height, args.image_width) ),
+                    transforms.ToTensor(),
+                    transforms.Normalize( [0.5], [0.5] ),
                 ]
             )
         else:
@@ -163,44 +175,51 @@ class ImaterialistDataset(data.Dataset):
             set_random_seed( self.seed_da )
 
         image = self.transform(image)
+        save_image( image, "_debug/image.png" )
 
         #-------------
         # mask
         #-------------
         if( self.datamode == "train" ):
-            mask_np = self.get_mask_image( self.df_train.loc[image_name], n_channels = self.args.n_channels, n_classes = self.n_classes )
+            mask_split_np = self.get_mask_image( self.df_train.loc[image_name], n_channels = self.args.n_channels, n_classes = self.n_classes )
+            mask_concat_np = concat_masks( mask_split_np, n_classes = self.n_classes )
 
-            mask = torch.zeros( (self.n_classes, self.image_height, self.image_width ) ).long()
+            # 各ラベルがチャンネル別になっているマスク画像（int 型）
+            mask_split_int = torch.zeros( (self.n_classes, self.image_height, self.image_width ) ).long()
             for i in range(self.n_classes):
                 if( self.data_augument ):
                     set_random_seed( self.seed_da )
-                mask_trans = self.transform_mask( Image.fromarray(mask_np[:,:,i]).convert("L") )
-                mask[i,:,:] = torch.from_numpy( np.asarray(mask_trans).astype("int64") )
-                #print( "mask : ", mask[i,150,50:100])
+                mask_split_int[i,:,:] = torch.from_numpy( np.asarray(self.transform_mask( Image.fromarray(mask_split_np[:,:,i]).convert("L") )).astype("int64") )
+                #print( "mask_split_int[{}] : {}".format(i, mask_split_int[i,150,50:100]))
+                #save_image( mask_split_int[i,:,:], "_debug/mask_split_int_{}.png".format(i) )
 
-            mask_float = torch.zeros( (self.n_classes, self.image_height, self.image_width ) ).float()
+            # 各ラベルがチャンネル別になっているマスク画像（float 型）
+            mask_split_float = torch.zeros( (self.n_classes, self.image_height, self.image_width ) ).float()
             for i in range(self.n_classes):
                 if( self.data_augument ):
                     set_random_seed( self.seed_da )
-                mask_float[i,:,:] = self.transform_mask_float( Image.fromarray(mask_np[:,:,i]).convert("L") )
-                #print( "mask_float : ", mask_float[i,150,50:100])
+                mask_split_float[i,:,:] = self.transform_mask_float( Image.fromarray(mask_split_np[:,:,i]).convert("L") )
+                #print( "mask_split_float : ", mask_split_float[i,150,50:100])
 
-            mask_vis_np = concat_masks( mask_np, n_classes = self.n_classes )
+            # １枚の画像中に複数のラベル値があるマスク画像（int 型）
+            mask_concat_int = torch.from_numpy( np.asarray(self.transform_mask( Image.fromarray(mask_concat_np).convert("L") )).astype("int64") )
+            #print( "mask_concat_int : ", mask_concat_int[150,50:100])
+            #save_image( mask_concat_int, "_debug/mask_concat_int.png" )
+
+            # １枚の画像中に複数のラベル値があるマスク画像（float 型）
             if( self.data_augument ):
                 set_random_seed( self.seed_da )
-            mask_vis = self.transform_mask_float( Image.fromarray(mask_vis_np).convert("L") )
+            mask_concat_float = self.transform_mask_float( Image.fromarray(mask_concat_np).convert("L") )
 
-            mask_vis_int_trans = self.transform_mask( Image.fromarray(mask_vis_np).convert("L") )
-            mask_vis_int = torch.from_numpy( np.asarray(mask_vis_int_trans).astype("int64") )
 
         if( self.datamode == "train" ):
             results_dict = {
                 "image_name" : image_name,
                 "image" : image,
-                "mask" : mask,
-                "mask_float" : mask_float,
-                "mask_vis" : mask_vis,
-                "mask_vis_int" : mask_vis_int,
+                "mask_split_int" : mask_split_int,
+                "mask_split_float" : mask_split_float,
+                "mask_concat_int" : mask_concat_int,
+                "mask_concat_float" : mask_concat_float,
             }
         else:
             results_dict = {

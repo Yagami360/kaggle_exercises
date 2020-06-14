@@ -141,7 +141,9 @@ def concat_masks( mask_np, n_classes ):
     """
     new_mask = np.zeros( (mask_np.shape[0], mask_np.shape[1]) )
     for i in range(n_classes):
-        new_mask += mask_np[:,:,i]
+        # background_np = True (1) のピクセルのみ上書き
+        back_ground_np = ( new_mask == 0 ).astype(np.int32)
+        new_mask += mask_np[:,:,i] * back_ground_np
 
     return new_mask
 

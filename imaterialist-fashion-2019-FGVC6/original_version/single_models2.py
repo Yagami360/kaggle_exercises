@@ -96,7 +96,6 @@ if __name__ == '__main__':
         args.exper_name += "_ep" + str(args.n_epoches)
         args.exper_name += "_b" + str(args.batch_size)
         args.exper_name += "_lr{}".format(args.lr)
-        args.exper_name += "_bce{}".format(args.lambda_bce)
         args.exper_name += "_enpropy{}".format(args.lambda_entropy)
         args.exper_name += "_l1{}".format(args.lambda_l1)
         args.exper_name += "_vgg{}".format(args.lambda_vgg)
@@ -240,19 +239,21 @@ if __name__ == '__main__':
                 # ミニバッチデータを GPU へ転送
                 image_name = inputs["image_name"]
                 image = inputs["image"].to(device)
-                mask = inputs["mask"].to(device)
-                mask_float = inputs["mask_float"].to(device)
-                mask_vis = inputs["mask_vis"].to(device)
-                mask_vis_int = inputs["mask_vis_int"].to(device)
+                mask_split_int = inputs["mask_split_int"].to(device)
+                mask_split_float = inputs["mask_split_float"].to(device)
+                mask_concat_int = inputs["mask_concat_int"].to(device)
+                mask_concat_float = inputs["mask_concat_float"].to(device)
                 if( args.debug and n_print > 0):
+                    print( "image_name : ", image_name )
                     print( "image.shape : ", image.shape )
-                    print( "mask.shape : ", mask.shape )
-                    print( "mask_vis.shape : ", mask_vis.shape )
-                    print( "mask_vis_int.shape : ", mask_vis_int.shape )
-                    print( "mask.dtype : ", mask.dtype )
-                    print( "mask_float.dtype : ", mask_float.dtype )
-                    print( "mask_vis.dtype : ", mask_vis.dtype )
-                    print( "mask_vis_int.dtype : ", mask_vis_int.dtype )
+                    print( "mask_split_int.shape : ", mask_split_int.shape )
+                    print( "mask_split_float.shape : ", mask_split_float.shape )
+                    print( "mask_concat_int.shape : ", mask_concat_int.shape )
+                    print( "mask_concat_float.shape : ", mask_concat_float.shape )
+                    print( "mask_split_int.dtype : ", mask_split_int.dtype )
+                    print( "mask_split_float.dtype : ", mask_split_float.dtype )
+                    print( "mask_concat_int.dtype : ", mask_concat_int.dtype )
+                    print( "mask_concat_float.dtype : ", mask_concat_float.dtype )
 
                 #====================================================
                 # 学習処理
@@ -261,32 +262,29 @@ if __name__ == '__main__':
                 # 生成器 の forword 処理
                 #----------------------------------------------------
                 # 学習用データをモデルに流し込む
-                #output = model_G( image )
                 output, output_mask, output_none_act = model_G( image )
 
-                output_vis_np = np.zeros( (args.batch_size, 1, args.image_height, args.image_width) )
+                output_concat_np = np.zeros( (args.batch_size, 1, args.image_height, args.image_width) )
                 for batch_idx in range(args.batch_size):
-                    output_vis_np[batch_idx,0,:,:] = concat_masks( output[batch_idx].detach().cpu().numpy().transpose(1,2,0), n_classes = args.n_classes )
-                output_vis = torch.from_numpy( output_vis_np )
-
+                    output_concat_np[batch_idx,0,:,:] = concat_masks( output[batch_idx].detach().cpu().numpy().transpose(1,2,0), n_classes = args.n_classes )
+                output_concat_float = torch.from_numpy( output_concat_np ).float()
                 if( args.debug and n_print > 0 ):
                     print( "output.shape :", output.shape )
                     print( "output_mask.shape :", output_mask.shape )
                     print( "output_none_act.shape :", output_none_act.shape )
-                    print( "output_vis.shape :", output_vis.shape )
+                    print( "output_concat_float.shape :", output_concat_float.shape )
                     print( "output.dtype :", output.dtype )
-                    print( "output_vis.dtype :", output_vis.dtype )
+                    print( "output_concat_float.dtype :", output_concat_float.dtype )
 
                 #----------------------------------------------------
                 # 生成器の更新処理
                 #----------------------------------------------------
                 # 損失関数を計算する
-                loss_l1 = loss_l1_fn( output, mask_float )
-                loss_vgg = loss_vgg_fn( output, mask_float )
-                loss_bce = loss_bce_fn( output, mask_float )
-                loss_entropy = loss_entropy_fn( output_none_act, mask_vis_int )
-                loss_parsing_entropy = loss_parsing_entropy_fn( output, mask )
-
+                loss_l1 = loss_l1_fn( output, mask_split_float )
+                loss_vgg = loss_vgg_fn( output, mask_split_float )
+                loss_bce = loss_bce_fn( output, mask_split_float )
+                loss_entropy = loss_entropy_fn( output_none_act, mask_concat_int )
+                loss_parsing_entropy = loss_parsing_entropy_fn( output, mask_split_float )
                 loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_entropy * loss_entropy + args.lambda_parsing_entropy * loss_parsing_entropy + args.lambda_bce * loss_bce
 
                 # ネットワークの更新処理
@@ -304,26 +302,21 @@ if __name__ == '__main__':
                     board_train.add_scalar('G/loss_bce', loss_bce.item(), step)
                     board_train.add_scalar('G/loss_entropy', loss_entropy.item(), step)
                     board_train.add_scalar('G/loss_parsing_entropy', loss_parsing_entropy.item(), step)
-
                     print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_bce={:.5f}, loss_entropy={:.5f}, loss_parsing_entropy={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_bce, loss_entropy, loss_parsing_entropy) )
 
-                    """
                     visuals = [
-                        [ image, ],
-                        [ mask[:,i,:,:] for i in range(args.n_classes) ],
-                        [ output[:,i,:,:] for i in range(args.n_classes) ],
+                        [ image, mask_concat_float, output_concat_float ],
                     ]
                     """
                     visuals = [
-                        [ image, mask_vis, output_vis],
-                        [ mask_float[:,i,:,:] for i in range(0,5) ],
-                        [ mask_float[:,i,:,:] for i in range(6,10) ],
-                        [ mask_float[:,i,:,:] for i in range(11,15) ],
-                        [ mask_float[:,i,:,:] for i in range(16,20) ],
-                        [ mask_float[:,i,:,:] for i in range(21,25) ],
-                        [ mask_float[:,i,:,:] for i in range(26,30) ],
-                        [ mask_float[:,i,:,:] for i in range(40,args.n_classes) ],
-
+                        [ image, mask_concat_float, output_concat_float ],
+                        [ mask_split_float[:,i,:,:] for i in range(0,5) ],
+                        [ mask_split_float[:,i,:,:] for i in range(6,10) ],
+                        [ mask_split_float[:,i,:,:] for i in range(11,15) ],
+                        [ mask_split_float[:,i,:,:] for i in range(16,20) ],
+                        [ mask_split_float[:,i,:,:] for i in range(21,25) ],
+                        [ mask_split_float[:,i,:,:] for i in range(26,30) ],
+                        [ mask_split_float[:,i,:,:] for i in range(40,args.n_classes) ],
                         [ output[:,i,:,:] for i in range(0,5) ],
                         [ output[:,i,:,:] for i in range(6,10) ],
                         [ output[:,i,:,:] for i in range(11,15) ],
@@ -332,6 +325,12 @@ if __name__ == '__main__':
                         [ output[:,i,:,:] for i in range(26,30) ],
                         [ output[:,i,:,:] for i in range(40,args.n_classes) ],
                     ]
+                    """
+
+                    if( args.debug and n_print > 0 ):
+                        for col, vis_item_row in enumerate(visuals):
+                            for row, vis_item in enumerate(vis_item_row):
+                                print("[train] vis_item[{}][{}].shape={} :".format(row,col,vis_item.shape) )
 
                     board_add_images(board_train, 'train', visuals, step+1)
 
@@ -353,34 +352,31 @@ if __name__ == '__main__':
                         # ミニバッチデータを GPU へ転送
                         image_name = inputs["image_name"]
                         image = inputs["image"].to(device)
-                        mask = inputs["mask"].to(device)
-                        mask_float = inputs["mask_float"].to(device)
-                        mask_vis = inputs["mask_vis"].to(device)
-                        mask_vis_int = inputs["mask_vis_int"].to(device)
+                        mask_split_int = inputs["mask_split_int"].to(device)
+                        mask_split_float = inputs["mask_split_float"].to(device)
+                        mask_concat_int = inputs["mask_concat_int"].to(device)
+                        mask_concat_float = inputs["mask_concat_float"].to(device)
 
                         #====================================================
                         # 推論処理
                         #====================================================
                         # 生成器
                         with torch.no_grad():
-                            #output = model_G( image )
                             output, output_mask, output_none_act = model_G( image )
-
-                            output_vis_np = np.zeros( (args.batch_size, 1, args.image_height, args.image_width) )
-                            for batch_idx in range(args.batch_size):
-                                output_vis_np[batch_idx,0,:,:] = concat_masks( output[batch_idx].detach().cpu().numpy().transpose(1,2,0), n_classes = args.n_classes )
-                            output_vis = torch.from_numpy( output_vis_np )
+                            output_concat_np = np.zeros( (args.batch_size_valid, 1, args.image_height, args.image_width) )
+                            for batch_idx in range(args.batch_size_valid):
+                                output_concat_np[batch_idx,0,:,:] = concat_masks( output[batch_idx].detach().cpu().numpy().transpose(1,2,0), n_classes = args.n_classes )
+                            output_concat_float = torch.from_numpy( output_concat_np ).float()
 
                         #----------------------------------------------------
                         # 損失関数の計算
                         #----------------------------------------------------
                         # 生成器
-                        loss_l1 = loss_l1_fn( output, mask_float )
-                        loss_vgg = loss_vgg_fn( output, mask_float )
-                        loss_bce = loss_bce_fn( output, mask_float )
-                        loss_entropy = loss_entropy_fn( output_none_act, mask_vis_int )
-                        loss_parsing_entropy = loss_parsing_entropy_fn( output, mask_float )
-
+                        loss_l1 = loss_l1_fn( output, mask_split_float )
+                        loss_vgg = loss_vgg_fn( output, mask_split_float )
+                        loss_bce = loss_bce_fn( output, mask_split_float )
+                        loss_entropy = loss_entropy_fn( output_none_act, mask_concat_int )
+                        loss_parsing_entropy = loss_parsing_entropy_fn( output, mask_split_float )
                         loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_entropy * loss_entropy + args.lambda_parsing_entropy * loss_parsing_entropy + args.lambda_bce * loss_bce
 
                         # total
@@ -394,7 +390,7 @@ if __name__ == '__main__':
                         # 
                         if( iter <= args.batch_size ):
                             visuals = [
-                                [ image, mask_vis, output_vis ],
+                                [ image, mask_concat_float, output_concat_float ],
                             ]
 
                             board_add_images(board_valid, 'valid/{}'.format(iter), visuals, step+1)
