@@ -2,6 +2,7 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import shutil
 import random
 from tqdm import tqdm
 import warnings
@@ -31,7 +32,7 @@ from torchvision.utils import save_image
 from tensorboardX import SummaryWriter
 
 # 自作モジュール
-from dataset2 import ImaterialistDataset, ImaterialistDataLoader
+from dataset import ImaterialistDataset, ImaterialistDataLoader, save_masks
 from models import UNetFGVC6
 from models import ParsingCrossEntropyLoss, LovaszSoftmaxLoss, VGGLoss, VanillaGANLoss, LSGANLoss, HingeGANLoss, ConditionalExpressionLoss
 from utils import save_checkpoint, load_checkpoint, convert_rle
@@ -67,15 +68,18 @@ if __name__ == '__main__':
 
     parser.add_argument('--lambda_l1', type=float, default=5.0, help="L1損失関数の係数値")
     parser.add_argument('--lambda_vgg', type=float, default=5.0, help="VGG perceptual loss_G の係数値")
-    parser.add_argument('--lambda_bce', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
     parser.add_argument('--lambda_entropy', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
     parser.add_argument('--lambda_parsing_entropy', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
 
     parser.add_argument("--n_diaplay_step", type=int, default=100,)
     parser.add_argument('--n_display_valid_step', type=int, default=500, help="valid データの tensorboard への表示間隔")
     parser.add_argument("--n_save_epoches", type=int, default=10,)
+    parser.add_argument("--val_rate", type=float, default=0.0002)
+    parser.add_argument('--n_display_valid', type=int, default=8, help="valid データの tensorboard への表示数")
 
-    parser.add_argument("--val_rate", type=float, default=0.05)
+    parser.add_argument('--save_masks', action='store_true', help="マスク画像を外部ファイルに保存するか否か")
+    parser.add_argument('--load_masks_from_dir', action='store_true', help="マスク画像をディレクトリから読み込むか否か")
+
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
@@ -165,6 +169,14 @@ if __name__ == '__main__':
     #================================    
     df_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
 
+    # マスク画像の書き込み
+    if( args.save_masks ):
+        save_masks( dataset_dir = args.dataset_dir, save_dir = os.path.join(args.dataset_dir, "train_masks" ), n_classes = args.n_classes, image_height = args.image_height, image_width = args.image_width ,resize = True )
+    else:
+        if( args.load_masks_from_dir ):
+            if not os.path.isdir( os.path.join(args.dataset_dir, "train_masks" ) ):
+                save_masks( dataset_dir = args.dataset_dir, save_dir = os.path.join(args.dataset_dir, "train_masks" ), n_classes = args.n_classes, image_height = args.image_height, image_width = args.image_width ,resize = True )
+
     # 学習用データセットとテスト用データセットの設定
     ds_train = ImaterialistDataset( args, args.dataset_dir, datamode = "train", image_height = args.image_height, image_width = args.image_width, n_classes = args.n_classes, data_augument = args.data_augument, debug = args.debug )
     ds_test = ImaterialistDataset( args, args.dataset_dir, datamode = "test", image_height = args.image_height, image_width = args.image_width, n_classes = args.n_classes, data_augument = False, debug = args.debug )
@@ -214,8 +226,6 @@ if __name__ == '__main__':
     loss_l1_fn = nn.L1Loss()
     loss_vgg_fn = VGGLoss(device, args.n_classes)
     loss_entropy_fn = nn.CrossEntropyLoss()
-    loss_bce_fn = nn.BCEWithLogitsLoss()
-    loss_entropy_fn = nn.CrossEntropyLoss()
     loss_parsing_entropy_fn = ParsingCrossEntropyLoss()
 
     #================================
@@ -229,7 +239,7 @@ if __name__ == '__main__':
             #=====================================
             # 学習用データの処理
             #=====================================
-            for iter, inputs in enumerate( tqdm( dloader_train, desc = "minbatch iters" ) ):
+            for iter, inputs in enumerate( tqdm( dloader_train, desc = "train iters" ) ):
                 model_G.train()            
 
                 # 一番最後のミニバッチループで、バッチサイズに満たない場合は無視する（後の計算で、shape の不一致をおこすため）
@@ -282,10 +292,9 @@ if __name__ == '__main__':
                 # 損失関数を計算する
                 loss_l1 = loss_l1_fn( output, mask_split_float )
                 loss_vgg = loss_vgg_fn( output, mask_split_float )
-                loss_bce = loss_bce_fn( output, mask_split_float )
                 loss_entropy = loss_entropy_fn( output_none_act, mask_concat_int )
                 loss_parsing_entropy = loss_parsing_entropy_fn( output, mask_split_float )
-                loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_entropy * loss_entropy + args.lambda_parsing_entropy * loss_parsing_entropy + args.lambda_bce * loss_bce
+                loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_entropy * loss_entropy + args.lambda_parsing_entropy * loss_parsing_entropy
 
                 # ネットワークの更新処理
                 optimizer_G.zero_grad()
@@ -299,50 +308,40 @@ if __name__ == '__main__':
                     board_train.add_scalar('G/loss_G', loss_G.item(), step)
                     board_train.add_scalar('G/loss_l1', loss_l1.item(), step)
                     board_train.add_scalar('G/loss_vgg', loss_vgg.item(), step)
-                    board_train.add_scalar('G/loss_bce', loss_bce.item(), step)
                     board_train.add_scalar('G/loss_entropy', loss_entropy.item(), step)
                     board_train.add_scalar('G/loss_parsing_entropy', loss_parsing_entropy.item(), step)
-                    print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_bce={:.5f}, loss_entropy={:.5f}, loss_parsing_entropy={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_bce, loss_entropy, loss_parsing_entropy) )
+                    print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_parsing_entropy={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_parsing_entropy) )
 
-                    visuals = [
+                    visuals_concat = [
                         [ image, mask_concat_float, output_concat_float ],
                     ]
-                    """
-                    visuals = [
-                        [ image, mask_concat_float, output_concat_float ],
-                        [ mask_split_float[:,i,:,:] for i in range(0,5) ],
-                        [ mask_split_float[:,i,:,:] for i in range(6,10) ],
-                        [ mask_split_float[:,i,:,:] for i in range(11,15) ],
-                        [ mask_split_float[:,i,:,:] for i in range(16,20) ],
-                        [ mask_split_float[:,i,:,:] for i in range(21,25) ],
-                        [ mask_split_float[:,i,:,:] for i in range(26,30) ],
-                        [ mask_split_float[:,i,:,:] for i in range(40,args.n_classes) ],
-                        [ output[:,i,:,:] for i in range(0,5) ],
-                        [ output[:,i,:,:] for i in range(6,10) ],
-                        [ output[:,i,:,:] for i in range(11,15) ],
-                        [ output[:,i,:,:] for i in range(16,20) ],
-                        [ output[:,i,:,:] for i in range(21,25) ],
-                        [ output[:,i,:,:] for i in range(26,30) ],
-                        [ output[:,i,:,:] for i in range(40,args.n_classes) ],
+                    visuals_split = [
+                        [ mask_split_float[:,i,:,:].view(args.batch_size, 1, args.image_height, args.image_width) for i in range(0,5) ],
+                        [ mask_split_float[:,i,:,:].view(args.batch_size, 1, args.image_height, args.image_width) for i in range(6,11) ],
+                        [ output[:,i,:,:].view(args.batch_size, 1, args.image_height, args.image_width) for i in range(0,5) ],
+                        [ output[:,i,:,:].view(args.batch_size, 1, args.image_height, args.image_width) for i in range(6,11) ],
                     ]
-                    """
 
                     if( args.debug and n_print > 0 ):
-                        for col, vis_item_row in enumerate(visuals):
+                        for col, vis_item_row in enumerate(visuals_concat):
                             for row, vis_item in enumerate(vis_item_row):
-                                print("[train] vis_item[{}][{}].shape={} :".format(row,col,vis_item.shape) )
+                                print("[train concat] vis_item[{}][{}].shape={} :".format(row,col,vis_item.shape) )
+                        for col, vis_item_row in enumerate(visuals_split):
+                            for row, vis_item in enumerate(vis_item_row):
+                                print("[train split] vis_item[{}][{}].shape={} :".format(row,col,vis_item.shape) )
 
-                    board_add_images(board_train, 'train', visuals, step+1)
+                    board_add_images(board_train, 'train_concat', visuals_concat, step+1)
+                    board_add_images(board_train, 'train_split', visuals_split, step+1)
 
                 #=====================================
                 # 検証用データの処理
                 #=====================================
-                if( step == 0 or ( step % args.n_display_valid_step == 0 ) ):
+                if( step % args.n_display_valid_step == 0 ):
                     loss_G_total = 0
                     loss_l1_total, loss_vgg_total = 0, 0
-                    loss_bce_total, loss_entropy_total, loss_parsing_entropy_total = 0, 0, 0
+                    loss_entropy_total, loss_parsing_entropy_total = 0, 0
                     n_valid_loop = 0
-                    for iter, inputs in enumerate( tqdm(dloader_valid) ):
+                    for iter, inputs in enumerate( tqdm(dloader_valid, desc = "eval iters") ):
                         model_G.eval()            
 
                         # 一番最後のミニバッチループで、バッチサイズに満たない場合は無視する（後の計算で、shape の不一致をおこすため）
@@ -363,10 +362,6 @@ if __name__ == '__main__':
                         # 生成器
                         with torch.no_grad():
                             output, output_mask, output_none_act = model_G( image )
-                            output_concat_np = np.zeros( (args.batch_size_valid, 1, args.image_height, args.image_width) )
-                            for batch_idx in range(args.batch_size_valid):
-                                output_concat_np[batch_idx,0,:,:] = concat_masks( output[batch_idx].detach().cpu().numpy().transpose(1,2,0), n_classes = args.n_classes )
-                            output_concat_float = torch.from_numpy( output_concat_np ).float()
 
                         #----------------------------------------------------
                         # 損失関数の計算
@@ -374,37 +369,48 @@ if __name__ == '__main__':
                         # 生成器
                         loss_l1 = loss_l1_fn( output, mask_split_float )
                         loss_vgg = loss_vgg_fn( output, mask_split_float )
-                        loss_bce = loss_bce_fn( output, mask_split_float )
                         loss_entropy = loss_entropy_fn( output_none_act, mask_concat_int )
                         loss_parsing_entropy = loss_parsing_entropy_fn( output, mask_split_float )
-                        loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_entropy * loss_entropy + args.lambda_parsing_entropy * loss_parsing_entropy + args.lambda_bce * loss_bce
+                        loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_entropy * loss_entropy + args.lambda_parsing_entropy * loss_parsing_entropy
 
                         # total
                         loss_G_total += loss_G
                         loss_l1_total += loss_l1
                         loss_vgg_total += loss_vgg
-                        loss_bce_total += loss_bce
                         loss_entropy_total += loss_entropy
                         loss_parsing_entropy_total += loss_parsing_entropy
 
-                        # 
-                        if( iter <= args.batch_size ):
-                            visuals = [
+                        #----------------------------------------------------
+                        # 生成画像表示
+                        #----------------------------------------------------
+                        if( iter <= args.n_display_valid ):
+                            output_concat_np = np.zeros( (args.batch_size_valid, 1, args.image_height, args.image_width) )
+                            for batch_idx in range(args.batch_size_valid):
+                                output_concat_np[batch_idx,0,:,:] = concat_masks( output[batch_idx].detach().cpu().numpy().transpose(1,2,0), n_classes = args.n_classes )
+                            output_concat_float = torch.from_numpy( output_concat_np ).float()
+
+                            visuals_concat = [
                                 [ image, mask_concat_float, output_concat_float ],
                             ]
+                            visuals_split = [
+                                [ mask_split_float[:,i,:,:].view(args.batch_size_valid, 1, args.image_height, args.image_width) for i in range(0,5) ],
+                                #[ mask_split_float[:,i,:,:].view(args.batch_size_valid, 1, args.image_height, args.image_width) for i in range(6,11) ],
+                                [ output[:,i,:,:].view(args.batch_size_valid, 1, args.image_height, args.image_width) for i in range(0,5) ],
+                                #[ output[:,i,:,:].view(args.batch_size_valid, 1, args.image_height, args.image_width) for i in range(6,11) ],
+                            ]
 
-                            board_add_images(board_valid, 'valid/{}'.format(iter), visuals, step+1)
+                            board_add_images(board_valid, 'valid_concat/{}'.format(iter), visuals_concat, step+1)
+                            board_add_images(board_valid, 'valid_split/{}'.format(iter), visuals_split, step+1)
 
                         n_valid_loop += 1
 
                     #----------------------------------------------------
-                    # 表示処理
+                    # loss 値表示
                     #----------------------------------------------------
                     # 生成器
                     board_valid.add_scalar('G/loss_G', loss_G_total.item()/n_valid_loop, step)
                     board_valid.add_scalar('G/loss_l1', loss_l1_total.item()/n_valid_loop, step)
                     board_valid.add_scalar('G/loss_vgg', loss_vgg_total.item()/n_valid_loop, step)
-                    board_valid.add_scalar('G/loss_bce', loss_bce_total.item()/n_valid_loop, step)
                     board_valid.add_scalar('G/loss_entropy', loss_entropy_total.item()/n_valid_loop, step)
                     board_valid.add_scalar('G/loss_parsing_entropy', loss_parsing_entropy_total.item()/n_valid_loop, step)
 

@@ -1,6 +1,7 @@
 import os
 from tqdm import tqdm
 import numpy as np
+import shutil
 import random
 import pandas as pd
 import re
@@ -24,6 +25,42 @@ IMG_EXTENSIONS = (
     '.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif',
     '.JPG', '.JPEG', '.PNG', '.PPM', '.BMP', '.PGM', '.TIF',
 )
+
+def save_masks( dataset_dir, save_dir, n_classes, image_height = 256, image_width = 192, resize = True ):
+    if not os.path.isdir( save_dir ):
+        os.mkdir( save_dir )
+    else:
+        shutil.rmtree( save_dir )
+        os.mkdir( save_dir )
+
+    df_train = pd.read_csv( os.path.join(dataset_dir, "train.csv"), index_col='ImageId' )
+    df_mask = df_train.groupby('ImageId')['EncodedPixels', 'ClassId'].agg(lambda x: list(x))
+    df_size = df_train.groupby('ImageId')['Height', 'Width'].mean()
+    df_train = df_mask.join(df_size, on='ImageId')
+    #print( "df_train.head() \n:", df_train.head())
+    for i in tqdm(range(len(df_train)), desc="saving mask images"):
+        image_name = df_train.index[i]
+        height = df_train.iloc[i]["Height"]
+        width = df_train.iloc[i]["Width"]
+        #print( "image_name={}, height={}, width={}".format(image_name, height, width) )
+
+        encoded_pixels = df_train.iloc[i]["EncodedPixels"]
+        class_ids = df_train.iloc[i]["ClassId"]
+        for encoded_pixel, class_id in zip(encoded_pixels, class_ids):    
+            if int(class_id) < n_classes - 1:
+                mask_image = np.zeros( (height*width), dtype=np.int32)
+                split_pixel = list(map(int, encoded_pixel.split(" ")))
+                for i in range(0,len(split_pixel), 2):
+                    start_pixel = split_pixel[i]-1
+                    len_mask = split_pixel[i+1]-1
+                    end_pixel = start_pixel + len_mask
+                    mask_image[start_pixel:end_pixel] = int(class_id)
+
+                mask_image = mask_image.reshape((height, width), order='F')
+                if( resize ):
+                    mask_image = cv2.resize(mask_image, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
+                cv2.imwrite( os.path.join(save_dir, image_name.split(".jpg")[0] + "_c{}".format(int(class_id)) + ".png"), mask_image )
+    return
 
 
 class ImaterialistDataset(data.Dataset):
@@ -162,6 +199,15 @@ class ImaterialistDataset(data.Dataset):
         mask_image = mask_image.reshape((height, width, n_classes), order='F')
         return mask_image
 
+    def get_mask_image_from_dir(self, df_mask, n_channels, n_classes, load_mask_dir, image_name ):
+        class_ids = df_mask["ClassId"]
+        mask_image = np.zeros( (self.image_height, self.image_width, n_classes), dtype=np.int32)
+        for class_id in zip(class_ids):
+            image_np = cv2.imread(os.path.join(load_mask_dir, image_name), cv2.IMREAD_GRAYSCALE)
+            mask_image[:, int(class_id)] = image_np
+
+        return mask_image
+
     def __getitem__(self, index):
         #print( "index : ", index )
         image_name = self.image_names[index]
@@ -175,13 +221,16 @@ class ImaterialistDataset(data.Dataset):
             set_random_seed( self.seed_da )
 
         image = self.transform(image)
-        save_image( image, "_debug/image.png" )
 
         #-------------
         # mask
         #-------------
         if( self.datamode == "train" ):
-            mask_split_np = self.get_mask_image( self.df_train.loc[image_name], n_channels = self.args.n_channels, n_classes = self.n_classes )
+            if( self.args.load_masks_from_dir ):
+                mask_split_np = self.get_mask_image_from_dir( self.df_train.loc[image_name], n_channels = self.args.n_channels, n_classes = self.n_classes, load_mask_dir = os.path.join(self.dataset_dir, "train_mask"), image_name = image_name )
+            else:
+                mask_split_np = self.get_mask_image( self.df_train.loc[image_name], n_channels = self.args.n_channels, n_classes = self.n_classes )
+
             mask_concat_np = concat_masks( mask_split_np, n_classes = self.n_classes )
 
             # 各ラベルがチャンネル別になっているマスク画像（int 型）
