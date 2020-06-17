@@ -171,11 +171,17 @@ if __name__ == '__main__':
 
     # マスク画像の書き込み
     if( args.save_masks ):
+        if not os.path.isdir( os.path.join(args.dataset_dir, "train_masks" ) ):
+            os.mkdir( os.path.join(args.dataset_dir, "train_masks" ) )
+        else:
+            shutil.rmtree( os.path.join(args.dataset_dir, "train_masks" ) )
+            os.mkdir( os.path.join(args.dataset_dir, "train_masks" ) )
         save_masks( dataset_dir = args.dataset_dir, save_dir = os.path.join(args.dataset_dir, "train_masks" ), n_classes = args.n_classes, image_height = args.image_height, image_width = args.image_width ,resize = True )
-    else:
-        if( args.load_masks_from_dir ):
-            if not os.path.isdir( os.path.join(args.dataset_dir, "train_masks" ) ):
-                save_masks( dataset_dir = args.dataset_dir, save_dir = os.path.join(args.dataset_dir, "train_masks" ), n_classes = args.n_classes, image_height = args.image_height, image_width = args.image_width ,resize = True )
+
+    if( args.load_masks_from_dir ):
+        if not os.path.isdir( os.path.join(args.dataset_dir, "train_masks" ) ):
+            os.mkdir( os.path.join(args.dataset_dir, "train_masks" ) )
+            save_masks( dataset_dir = args.dataset_dir, save_dir = os.path.join(args.dataset_dir, "train_masks" ), n_classes = args.n_classes, image_height = args.image_height, image_width = args.image_width ,resize = True )
 
     # 学習用データセットとテスト用データセットの設定
     ds_train = ImaterialistDataset( args, args.dataset_dir, datamode = "train", image_height = args.image_height, image_width = args.image_width, n_classes = args.n_classes, data_augument = args.data_augument, debug = args.debug )

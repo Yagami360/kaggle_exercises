@@ -27,12 +27,6 @@ IMG_EXTENSIONS = (
 )
 
 def save_masks( dataset_dir, save_dir, n_classes, image_height = 256, image_width = 192, resize = True ):
-    if not os.path.isdir( save_dir ):
-        os.mkdir( save_dir )
-    else:
-        shutil.rmtree( save_dir )
-        os.mkdir( save_dir )
-
     df_train = pd.read_csv( os.path.join(dataset_dir, "train.csv"), index_col='ImageId' )
     df_mask = df_train.groupby('ImageId')['EncodedPixels', 'ClassId'].agg(lambda x: list(x))
     df_size = df_train.groupby('ImageId')['Height', 'Width'].mean()
@@ -59,7 +53,7 @@ def save_masks( dataset_dir, save_dir, n_classes, image_height = 256, image_widt
                 mask_image = mask_image.reshape((height, width), order='F')
                 if( resize ):
                     mask_image = cv2.resize(mask_image, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
-                cv2.imwrite( os.path.join(save_dir, image_name.split(".jpg")[0] + "_c{}".format(int(class_id)) + ".png"), mask_image )
+                cv2.imwrite( os.path.join(save_dir, image_name.split(".jpg")[0] + "_c{}".format(class_id) + ".png"), mask_image )
     return
 
 
@@ -203,8 +197,11 @@ class ImaterialistDataset(data.Dataset):
         class_ids = df_mask["ClassId"]
         mask_image = np.zeros( (self.image_height, self.image_width, n_classes), dtype=np.int32)
         for class_id in zip(class_ids):
-            image_np = cv2.imread(os.path.join(load_mask_dir, image_name), cv2.IMREAD_GRAYSCALE)
-            mask_image[:, int(class_id)] = image_np
+            class_id = int(class_id[0])
+            print( "class_id : ", class_id )
+            if class_id < n_classes - 1:
+                image_np = cv2.imread(os.path.join(load_mask_dir, image_name.split(".jpg")[0] + "_c{}".format(class_id) + ".png"), cv2.IMREAD_GRAYSCALE)
+                mask_image[:, :, class_id] = image_np
 
         return mask_image
 

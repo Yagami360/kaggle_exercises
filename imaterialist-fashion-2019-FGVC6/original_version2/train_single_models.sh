@@ -25,10 +25,11 @@ python single_models.py \
     --n_epoches ${N_EPOCHES} --batch_size ${BATCH_SIZE} \
     --image_height 256 --image_width 192 --n_channels 3 --n_classes 47 \
     --lambda_l1 0.0 --lambda_vgg 0.0 --lambda_entropy 1.0 --lambda_parsing_entropy 0.0 \
-    --save_masks --load_masks_from_dir \
+    --load_masks_from_dir \
     --n_workers ${N_WORKERS} \
     --debug
 
+#    --save_masks \
 #    --data_augument \
 
 
