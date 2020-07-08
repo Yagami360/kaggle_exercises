@@ -655,7 +655,7 @@ class ResidualBlock(nn.Module):
 
     def forward(self, x):
         return x + self.main(x)
-    
+
 #====================================
 # 識別器
 #====================================

@@ -1,6 +1,7 @@
 #!/bin/sh
 #source activate pytorch11_py36
-#nohup sh train_single_models2.sh > _logs/train_single_models_200527_2.out &
+#nohup sh train_single_models.sh > _logs/train_single_models_200527_2.out &
+#nohup sh train_single_models.sh poweroff > _logs/train_single_models_200617_1.out &
 #set -e
 mkdir -p _logs
 N_WORKERS=4
@@ -18,7 +19,6 @@ rm -rf tensorboard/${EXPER_NAME}_test
 rm -rf tensorboard/${EXPER_NAME}_valid
 
 python single_models.py \
-    --exper_name ${EXPER_NAME} \
     --train_mode train \
     --model_type_G ${MODEL_TYPE_G} \
     --n_diaplay_step 100 --n_display_valid_step 500 --n_save_epoches 1 \
@@ -29,9 +29,8 @@ python single_models.py \
     --n_workers ${N_WORKERS} \
     --debug
 
-#    --save_masks \
+#    --exper_name ${EXPER_NAME} \
 #    --data_augument \
-
 
 if [ $1 = "poweroff" ] ; then
     sudo poweroff

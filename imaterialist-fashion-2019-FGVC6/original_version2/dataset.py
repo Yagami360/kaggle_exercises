@@ -112,10 +112,12 @@ class ImaterialistDataset(data.Dataset):
                     transforms.RandomVerticalFlip(),
                     transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
                     transforms.CenterCrop( size = (args.image_height, args.image_width) ),
+                    transforms.ToTensor(),
+                    transforms.Normalize( [0.5], [0.5] ),
                 ]
             )
-
-            self.transform_mask_float = transforms.Compose(
+            
+            self.transform_mask_woToTernsor = transforms.Compose(
                 [
                     transforms.Resize( (args.image_height, args.image_width), interpolation=Image.NEAREST ),
 #                    transforms.RandomResizedCrop( (args.image_height, args.image_width) ),
@@ -123,10 +125,9 @@ class ImaterialistDataset(data.Dataset):
                     transforms.RandomVerticalFlip(),
                     transforms.RandomAffine( degrees = (-10,10),  translate=(0.0, 0.0), scale = (1.00,1.00), resample=Image.BICUBIC ),
                     transforms.CenterCrop( size = (args.image_height, args.image_width) ),
-                    transforms.ToTensor(),
-                    transforms.Normalize( [0.5], [0.5] ),
                 ]
             )
+
         else:
             self.transform = transforms.Compose(
                 [
@@ -136,13 +137,8 @@ class ImaterialistDataset(data.Dataset):
                     transforms.Normalize( mean, std ),
                 ]
             )
+
             self.transform_mask = transforms.Compose(
-                [
-                    transforms.Resize( (args.image_height, args.image_width), interpolation=Image.NEAREST ),
-                    transforms.CenterCrop( size = (args.image_height, args.image_width) ),
-                ]
-            )
-            self.transform_mask_float = transforms.Compose(
                 [
                     transforms.Resize( (args.image_height, args.image_width), interpolation=Image.NEAREST ),
                     transforms.CenterCrop( size = (args.image_height, args.image_width) ),
@@ -150,6 +146,14 @@ class ImaterialistDataset(data.Dataset):
                     transforms.Normalize( [0.5], [0.5] ),
                 ]
             )
+
+            self.transform_mask_woToTernsor = transforms.Compose(
+                [
+                    transforms.Resize( (args.image_height, args.image_width), interpolation=Image.NEAREST ),
+                    transforms.CenterCrop( size = (args.image_height, args.image_width) ),
+                ]
+            )
+
 
         if( self.debug ):
             print( "self.dataset_dir :", self.dataset_dir)
@@ -198,9 +202,8 @@ class ImaterialistDataset(data.Dataset):
         mask_image = np.zeros( (self.image_height, self.image_width, n_classes), dtype=np.int32)
         for class_id in zip(class_ids):
             class_id = int(class_id[0])
-            print( "class_id : ", class_id )
             if class_id < n_classes - 1:
-                image_np = cv2.imread(os.path.join(load_mask_dir, image_name.split(".jpg")[0] + "_c{}".format(class_id) + ".png"), cv2.IMREAD_GRAYSCALE)
+                image_np = cv2.imread(os.path.join(load_mask_dir, image_name.split(".jpg")[0] + "_c{}".format(str(class_id)) + ".png"), cv2.IMREAD_GRAYSCALE)
                 mask_image[:, :, class_id] = image_np
 
         return mask_image
@@ -224,7 +227,7 @@ class ImaterialistDataset(data.Dataset):
         #-------------
         if( self.datamode == "train" ):
             if( self.args.load_masks_from_dir ):
-                mask_split_np = self.get_mask_image_from_dir( self.df_train.loc[image_name], n_channels = self.args.n_channels, n_classes = self.n_classes, load_mask_dir = os.path.join(self.dataset_dir, "train_mask"), image_name = image_name )
+                mask_split_np = self.get_mask_image_from_dir( self.df_train.loc[image_name], n_channels = self.args.n_channels, n_classes = self.n_classes, load_mask_dir = os.path.join(self.dataset_dir, "train_masks"), image_name = image_name )
             else:
                 mask_split_np = self.get_mask_image( self.df_train.loc[image_name], n_channels = self.args.n_channels, n_classes = self.n_classes )
 
@@ -235,7 +238,7 @@ class ImaterialistDataset(data.Dataset):
             for i in range(self.n_classes):
                 if( self.data_augument ):
                     set_random_seed( self.seed_da )
-                mask_split_int[i,:,:] = torch.from_numpy( np.asarray(self.transform_mask( Image.fromarray(mask_split_np[:,:,i]).convert("L") )).astype("int64") )
+                mask_split_int[i,:,:] = torch.from_numpy( np.asarray(self.transform_mask_woToTernsor( Image.fromarray(mask_split_np[:,:,i]).convert("L") )).astype("int64") )
                 #print( "mask_split_int[{}] : {}".format(i, mask_split_int[i,150,50:100]))
                 #save_image( mask_split_int[i,:,:], "_debug/mask_split_int_{}.png".format(i) )
 
@@ -244,18 +247,18 @@ class ImaterialistDataset(data.Dataset):
             for i in range(self.n_classes):
                 if( self.data_augument ):
                     set_random_seed( self.seed_da )
-                mask_split_float[i,:,:] = self.transform_mask_float( Image.fromarray(mask_split_np[:,:,i]).convert("L") )
+                mask_split_float[i,:,:] = self.transform_mask( Image.fromarray(mask_split_np[:,:,i]).convert("L") )
                 #print( "mask_split_float : ", mask_split_float[i,150,50:100])
 
             # １枚の画像中に複数のラベル値があるマスク画像（int 型）
-            mask_concat_int = torch.from_numpy( np.asarray(self.transform_mask( Image.fromarray(mask_concat_np).convert("L") )).astype("int64") )
+            mask_concat_int = torch.from_numpy( np.asarray(self.transform_mask_woToTernsor( Image.fromarray(mask_concat_np).convert("L") )).astype("int64") )
             #print( "mask_concat_int : ", mask_concat_int[150,50:100])
             #save_image( mask_concat_int, "_debug/mask_concat_int.png" )
 
             # １枚の画像中に複数のラベル値があるマスク画像（float 型）
             if( self.data_augument ):
                 set_random_seed( self.seed_da )
-            mask_concat_float = self.transform_mask_float( Image.fromarray(mask_concat_np).convert("L") )
+            mask_concat_float = self.transform_mask( Image.fromarray(mask_concat_np).convert("L") )
 
 
         if( self.datamode == "train" ):
