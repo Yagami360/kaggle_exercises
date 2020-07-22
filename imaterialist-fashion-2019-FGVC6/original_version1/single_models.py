@@ -297,10 +297,10 @@ if __name__ == '__main__':
 
                 # 学習用データをモデルに流し込む
                 """
-                d_real = model_D( output )
+                d_real = model_D( mask )
                 d_fake = model_D( output.detach() )
                 """
-                d_real = model_D( output_mask )
+                d_real = model_D( mask )
                 d_fake = model_D( output_mask.detach() )
                 if( args.debug and n_print > 0 ):
                     print( "d_real.shape :", d_real.shape )
@@ -403,10 +403,10 @@ if __name__ == '__main__':
                         # 識別器
                         with torch.no_grad():
                             """
-                            d_real = model_D( output )
+                            d_real = model_D( mask )
                             d_fake = model_D( output.detach() )
                             """
-                            d_real = model_D( output_mask )
+                            d_real = model_D( mask )
                             d_fake = model_D( output_mask.detach() )
 
                         #----------------------------------------------------

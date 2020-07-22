@@ -349,7 +349,7 @@ if __name__ == '__main__':
 
                 # 学習用データをモデルに流し込む
                 if( args.model_type_D == "ganimation" ):
-                    d_real, d_real_depth = model_D( output )
+                    d_real, d_real_depth = model_D( mask )
                     d_fake, d_fake_depth = model_D( output.detach() )
                     if( args.debug and n_print > 0 ):
                         print( "d_real.shape :", d_real.shape )
@@ -357,7 +357,7 @@ if __name__ == '__main__':
                         print( "d_real_depth.shape :", d_real_depth.shape )
                         print( "d_fake_depth.shape :", d_fake_depth.shape )
                 else:
-                    d_real = model_D( output )
+                    d_real = model_D( mask )
                     d_fake = model_D( output.detach() )
                     if( args.debug and n_print > 0 ):
                         print( "d_real.shape :", d_real.shape )
@@ -474,10 +474,10 @@ if __name__ == '__main__':
                         # 識別器
                         with torch.no_grad():
                             if( args.model_type_D == "ganimation" ):
-                                d_real, d_real_depth = model_D( output )
+                                d_real, d_real_depth = model_D( mask )
                                 d_fake, d_fake_depth = model_D( output.detach() )
                             else:
-                                d_real = model_D( output )
+                                d_real = model_D( mask )
                                 d_fake = model_D( output.detach() )
 
                         #----------------------------------------------------
