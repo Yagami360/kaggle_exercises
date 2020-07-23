@@ -31,6 +31,25 @@ class ParsingCrossEntropyLoss(nn.Module):
         #print( "input.shape={}, target.shape={}".format(input.shape, target.shape) )
         return self.loss_fn(input, target)
 
+class CrossEntropy2DLoss(nn.Module):
+    def __init__(self, device, ignore_index = 255, weight = None, size_average = True, batch_average = True):
+        super(CrossEntropy2DLoss, self).__init__()
+        if weight is None:
+            self.loss_fn = nn.CrossEntropyLoss( weight = weight, ignore_index = ignore_index, size_average = size_average )
+        else:
+            self.loss_fn = nn.CrossEntropyLoss( weight = torch.from_numpy(np.array(weight)).float().to(device), ignore_index = ignore_index, size_average = size_average )
+        return
+
+    def forward(self, logit, target):
+        n, c, h, w = logit.size()
+        # logit = logit.permute(0, 2, 3, 1)
+        target = target.squeeze(1)
+
+        #print( "logit.shape : ", logit.shape )
+        #print( "target.shape : ", target.shape )
+        loss = self.loss_fn(logit, target.long())
+        return loss
+
 #=============================================
 # VGG loss
 #=============================================
@@ -190,28 +209,6 @@ class HingeGANLoss(nn.Module):
             loss = self.forward_G( d_fake )
 
         return loss
-
-
-#=============================
-# GANimation の conditional expression loss
-#=============================
-class ConditionalExpressionLoss(nn.Module):
-    def __init__(self):
-        super(ConditionalExpressionLoss, self).__init__()
-        self.loss_fn = nn.MSELoss()
-        return
-
-    """
-    def forward(self, d_size_real, d_size_fake, size ):
-        loss_fake = self.loss_fn( d_size_fake, size )
-        loss_real = self.loss_fn( d_size_real, size )
-        loss = loss_real + loss_fake
-        return loss
-    """
-    def forward(self, d_size, size ):
-        loss = self.loss_fn( d_size, size )
-        return loss
-
 
 #=============================
 # LovaszSoftmax loss

@@ -23,7 +23,7 @@ Kaggle の練習用レポジトリ
 
 - セマンティクス・セグメンテーション
     - [[Featured] TGS Salt Identification Challenge](https://github.com/Yagami360/kaggle_exercises/tree/master/tgs-salt-identification-challenge)
-    - [[Research] iMaterialist (Fashion) 2019 at FGVC6](https://github.com/Yagami360/kaggle_exercises/tree/master/imaterialist-fashion-2019-FGVC6)
+    - [【実装中】[Research] iMaterialist (Fashion) 2019 at FGVC6](https://github.com/Yagami360/kaggle_exercises/tree/master/imaterialist-fashion-2019-FGVC6)
     - [Research] iMaterialist (Fashion) 2020 at FGVC6
 
 - 物体検出
@@ -38,6 +38,7 @@ Kaggle の練習用レポジトリ
 - xxx
 
 ## Tips
+<!--
 - EDA と前処理
     1. 目的変数の分布を確認。
         - 偏っているようなら log 変換などで正規分布に近づける
@@ -74,7 +75,7 @@ Kaggle の練習用レポジトリ
 - その他
     - 回帰対象の確率分布が正規分布に従っていないとモデルの推論精度が低下するので、対数変換などで正規分布に従うようにする。
         - 参考コンペ : House Prices の SalePrice
-
+-->
 
 ## 参考文献
 - [Kaggleで勝つデータ分析の技術](https://github.com/ghmagazine/kagglebook)

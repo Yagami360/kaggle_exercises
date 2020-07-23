@@ -2,6 +2,7 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import shutil
 import random
 from tqdm import tqdm
 import warnings
@@ -31,14 +32,15 @@ from torchvision.utils import save_image
 from tensorboardX import SummaryWriter
 
 # 自作モジュール
-from dataset import ImaterialistDataset, ImaterialistDataLoader
-from models import UNet4, UNet4ResNet34, UNetFGVC6, GANimationGenerator, MGVTONResGenerator
-from models import PatchGANDiscriminator, MultiscaleDiscriminator, GANimationDiscriminator
-from models import ParsingCrossEntropyLoss, LovaszSoftmaxLoss, VGGLoss, VanillaGANLoss, LSGANLoss, HingeGANLoss, ConditionalExpressionLoss
-from utils import save_checkpoint, load_checkpoint, convert_rle
-from utils import board_add_image, board_add_images, save_image_w_norm
-from utils import iou_metric, iou_metric_batch
-from utils import split_masks
+from dataset import ImaterialistDataset, ImaterialistDataLoader, save_masks
+from models.unet import UNet4, UNet4ResNet34, UNetFGVC6
+from models.deeplab import DeepLab
+from models.losses import ParsingCrossEntropyLoss, CrossEntropy2DLoss, LovaszSoftmaxLoss, VGGLoss, LSGANLoss
+from utils.utils import save_checkpoint, load_checkpoint, convert_rle
+from utils.utils import board_add_image, board_add_images, save_image_w_norm
+from utils.utils import iou_metric, iou_metric_batch
+from utils.utils import split_masks, concat_masks
+from utils.decode_labels import decode_labels_tsr
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -48,11 +50,9 @@ if __name__ == '__main__':
     parser.add_argument("--submit_file", type=str, default="submission.csv")
     parser.add_argument("--competition_id", type=str, default="imaterialist-fashion-2019-FGVC6")
     parser.add_argument("--train_mode", choices=["train", "test", "eval"], default="train", help="")
-    parser.add_argument("--model_type_G", choices=["unet4", "unet4resnet34", "unet_fgvc6", "mgvton", "ganimation"], default="unet4", help="生成器モデルの種類")    
-    parser.add_argument("--model_type_D", choices=["patchgan"], default="patchgan", help="識別器モデルの種類")
+    parser.add_argument("--model_type_G", choices=["unet4", "unet4_resnet", "unet_fgvc6", "deeplab_v3"], default="deeplab_v3", help="生成器モデルの種類")    
     parser.add_argument('--save_checkpoints_dir', type=str, default="checkpoints", help="モデルの保存ディレクトリ")
     parser.add_argument('--load_checkpoints_path_G', type=str, default="", help="生成器モデルの読み込みファイルのパス")
-    parser.add_argument('--load_checkpoints_path_D', type=str, default="", help="識別器モデルの読み込みファイルのパス")
     parser.add_argument('--tensorboard_dir', type=str, default="tensorboard", help="TensorBoard のディレクトリ")
     parser.add_argument("--n_epoches", type=int, default=100, help="エポック数")    
     parser.add_argument('--batch_size', type=int, default=4, help="バッチサイズ")
@@ -63,23 +63,22 @@ if __name__ == '__main__':
     parser.add_argument('--beta2', type=float, default=0.999, help="学習率の減衰率")
     parser.add_argument('--image_height', type=int, default=256, help="入力画像の高さ（pixel単位）")
     parser.add_argument('--image_width', type=int, default=192, help="入力画像の幅（pixel単位）")
-    parser.add_argument("--n_channels", type=int, default=3, help="チャンネル数") 
+    parser.add_argument("--n_in_channels", type=int, default=3, help="入力画像のチャンネル数") 
     parser.add_argument("--n_classes", type=int, default=47, help="ラベル数")   
     parser.add_argument("--n_samplings", type=int, default=100000, help="ラベル数")
     parser.add_argument('--data_augument', action='store_true')
 
-    parser.add_argument('--lambda_l1', type=float, default=5.0, help="L1損失関数の係数値")
-    parser.add_argument('--lambda_vgg', type=float, default=5.0, help="VGG perceptual loss_G の係数値")
-    parser.add_argument('--lambda_bce', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
-    parser.add_argument('--lambda_enpropy', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
-    parser.add_argument('--lambda_adv', type=float, default=1.0, help="Adv loss_G の係数値")
-    parser.add_argument('--adv_loss_type', choices=['vanilla', 'lsgan', 'hinge'], default="lsgan", help="GAN Adv loss の種類")
+    parser.add_argument('--lambda_entropy', type=float, default=1.0, help="クロスエントロピー損失関数の係数値")
 
     parser.add_argument("--n_diaplay_step", type=int, default=100,)
     parser.add_argument('--n_display_valid_step', type=int, default=500, help="valid データの tensorboard への表示間隔")
     parser.add_argument("--n_save_epoches", type=int, default=10,)
+    parser.add_argument("--val_rate", type=float, default=0.0002)
+    parser.add_argument('--n_display_valid', type=int, default=8, help="valid データの tensorboard への表示数")
 
-    parser.add_argument("--val_rate", type=float, default=0.05)
+    parser.add_argument('--save_masks', action='store_true', help="マスク画像を外部ファイルに保存するか否か")
+    parser.add_argument('--load_masks_from_dir', action='store_true', help="マスク画像をディレクトリから読み込むか否か")
+
     parser.add_argument("--seed", type=int, default=71)
     parser.add_argument('--device', choices=['cpu', 'gpu'], default="gpu", help="使用デバイス (CPU or GPU)")
     parser.add_argument('--n_workers', type=int, default=4, help="CPUの並列化数（0 で並列化なし）")
@@ -100,11 +99,9 @@ if __name__ == '__main__':
         args.exper_name += "_ep" + str(args.n_epoches)
         args.exper_name += "_b" + str(args.batch_size)
         args.exper_name += "_lr{}".format(args.lr)
-        args.exper_name += "_bce{}".format(args.lambda_bce)
-        args.exper_name += "_enpropy{}".format(args.lambda_enpropy)
+        args.exper_name += "_enpropy{}".format(args.lambda_entropy)
         args.exper_name += "_l1{}".format(args.lambda_l1)
         args.exper_name += "_vgg{}".format(args.lambda_vgg)
-        args.exper_name += "_adv{}_{}".format(args.adv_loss_type, args.lambda_adv)
 
     if( args.debug ):
         for key, value in vars(args).items():
@@ -116,12 +113,14 @@ if __name__ == '__main__':
         os.mkdir(args.results_dir)
     if not os.path.isdir( os.path.join(args.results_dir, args.exper_name) ):
         os.mkdir(os.path.join(args.results_dir, args.exper_name))
-    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test") ):
-        os.mkdir(os.path.join(args.results_dir, args.exper_name, "test"))
-    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test", "images") ):
-        os.mkdir(os.path.join(args.results_dir, args.exper_name, "test", "images"))
-    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "test", "masks") ):
-        os.mkdir(os.path.join(args.results_dir, args.exper_name, "test", "masks"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "images") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "images"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "masks") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "masks"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "masks_vis") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "masks_vis"))
+    if not os.path.isdir( os.path.join(args.results_dir, args.exper_name, "masks_split") ):
+        os.mkdir(os.path.join(args.results_dir, args.exper_name, "masks_split"))
     if( args.train_mode in ["train"] ):
         if not( os.path.exists(args.save_checkpoints_dir) ):
             os.mkdir(args.save_checkpoints_dir)
@@ -129,7 +128,7 @@ if __name__ == '__main__':
             os.mkdir( os.path.join(args.save_checkpoints_dir, args.exper_name) )
 
     # 警告非表示
-    warnings.simplefilter('ignore', DeprecationWarning)
+    #warnings.simplefilter('ignore', DeprecationWarning)
 
     # 実行 Device の設定
     if( args.device == "gpu" ):
@@ -171,6 +170,20 @@ if __name__ == '__main__':
     #================================    
     df_submission = pd.read_csv( os.path.join(args.dataset_dir, "sample_submission.csv" ) )
 
+    # マスク画像の書き込み
+    if( args.save_masks ):
+        if not os.path.isdir( os.path.join(args.dataset_dir, "train_masks" ) ):
+            os.mkdir( os.path.join(args.dataset_dir, "train_masks" ) )
+        else:
+            shutil.rmtree( os.path.join(args.dataset_dir, "train_masks" ) )
+            os.mkdir( os.path.join(args.dataset_dir, "train_masks" ) )
+        save_masks( dataset_dir = args.dataset_dir, save_dir = os.path.join(args.dataset_dir, "train_masks" ), n_classes = args.n_classes, image_height = args.image_height, image_width = args.image_width ,resize = True )
+
+    if( args.load_masks_from_dir ):
+        if not os.path.isdir( os.path.join(args.dataset_dir, "train_masks" ) ):
+            os.mkdir( os.path.join(args.dataset_dir, "train_masks" ) )
+            save_masks( dataset_dir = args.dataset_dir, save_dir = os.path.join(args.dataset_dir, "train_masks" ), n_classes = args.n_classes, image_height = args.image_height, image_width = args.image_width ,resize = True )
+
     # 学習用データセットとテスト用データセットの設定
     ds_train = ImaterialistDataset( args, args.dataset_dir, datamode = "train", image_height = args.image_height, image_width = args.image_width, n_classes = args.n_classes, data_augument = args.data_augument, debug = args.debug )
     ds_test = ImaterialistDataset( args, args.dataset_dir, datamode = "test", image_height = args.image_height, image_width = args.image_width, n_classes = args.n_classes, data_augument = False, debug = args.debug )
@@ -197,29 +210,22 @@ if __name__ == '__main__':
     #================================
     # 生成器
     if( args.model_type_G == "unet4" ):
-        model_G = UNet4( n_in_channels = 3, n_out_channels = args.n_channels, n_fmaps = 64 ).to( device )
-    elif( args.model_type_G == "unet4resnet34" ):
-        model_G = UNet4ResNet34( n_in_channels = 3, n_out_channels = args.n_channels, n_fmaps = 64,).to( device )
+        model_G = UNet4( n_in_channels = args.n_in_channels, n_out_channels = args.n_classes, n_fmaps = 64 ).to( device )
+    elif( args.model_type_G == "unet4_resnet" ):
+        model_G = UNet4ResNet34( n_in_channels = args.n_in_channels, n_out_channels = args.n_classes, n_fmaps = 64, pretrained = True ).to( device )
     elif( args.model_type_G == "unet_fgvc6" ):
-        model_G = UNetFGVC6( n_channels = 3, n_classes = args.n_channels).to( device )
-    elif( args.model_type_G == "mgvton" ):
-        model_G = MGVTONResGenerator( input_nc = 3, output_nc = args.n_channels, padding_type='zero', affine=False ).to( device )
-    elif( args.model_type_G == "ganimation" ):
-        model_G = GANimationGenerator( input_nc = 3, output_nc = args.n_channels, conv_dim = 64 ).to( device )
-
-    # 識別器
-    if( args.model_type_D == "patchgan" ):
-        model_D = PatchGANDiscriminator( n_in_channels = args.n_channels, n_fmaps = 64 ).to( device )
+        model_G = UNetFGVC6( n_channels = args.n_in_channels, n_classes = args.n_classes ).to( device )
+    elif( args.model_type_G == "deeplab_v3" ):
+        model_G = DeepLab( backbone='resnet', n_in_channels = args.n_in_channels, output_stride = 16, num_classes = args.n_classes, pretrained_backbone = True ).to( device )
+    else:
+        NotImplementedError()
 
     if( args.debug ):
         print( "model_G :\n", model_G )
-        print( "model_D :\n", model_D )
 
     # モデルを読み込む
     if not args.load_checkpoints_path_G == '' and os.path.exists(args.load_checkpoints_path_G):
         load_checkpoint(model_G, device, args.load_checkpoints_path_G )
-    if not args.load_checkpoints_path_D == '' and os.path.exists(args.load_checkpoints_path_D):
-        load_checkpoint(model_D, device, args.load_checkpoints_path_D )
 
     #================================
     # optimizer_G の設定
@@ -229,25 +235,10 @@ if __name__ == '__main__':
         lr = args.lr, betas = (args.beta1,args.beta2)
     )
 
-    optimizer_D = optim.Adam(
-        params = model_D.parameters(),
-        lr = args.lr, betas = (args.beta1,args.beta2)
-    )
-
     #================================
     # loss_G 関数の設定
     #================================
-    loss_l1_fn = nn.L1Loss()
-    loss_vgg_fn = VGGLoss(device, args.n_channels)
-    loss_entropy_fn = ParsingCrossEntropyLoss()
-    loss_bce_fn = nn.BCEWithLogitsLoss()
-
-    if( args.adv_loss_type == "vanilla" ):
-        loss_adv_fn = VanillaGANLoss(device)
-    elif( args.adv_loss_type == "lsgan" ):
-        loss_adv_fn = LSGANLoss(device)
-    elif( args.adv_loss_type == "hinge" ):
-        loss_adv_fn = HingeGANLoss(device)
+    loss_entropy_fn = CrossEntropy2DLoss(device)
 
     #================================
     # モデルの学習
@@ -260,9 +251,8 @@ if __name__ == '__main__':
             #=====================================
             # 学習用データの処理
             #=====================================
-            for iter, inputs in enumerate( tqdm( dloader_train, desc = "minbatch iters" ) ):
+            for iter, inputs in enumerate( tqdm( dloader_train, desc = "train iters" ) ):
                 model_G.train()            
-                model_D.train()            
 
                 # 一番最後のミニバッチループで、バッチサイズに満たない場合は無視する（後の計算で、shape の不一致をおこすため）
                 if inputs["image"].shape[0] != args.batch_size:
@@ -272,9 +262,16 @@ if __name__ == '__main__':
                 image_name = inputs["image_name"]
                 image = inputs["image"].to(device)
                 mask = inputs["mask"].to(device)
+                mask = mask.unsqueeze(1)
+                mask_rgb = decode_labels_tsr(mask)
                 if( args.debug and n_print > 0):
+                    print( "image_name : ", image_name )
                     print( "image.shape : ", image.shape )
+                    print( "torch.min(image)={}, torch.max(image)={}".format(torch.min(image), torch.max(image)) )
                     print( "mask.shape : ", mask.shape )
+                    print( "mask.dtype : ", mask.dtype )
+                    print( "torch.min(mask)={}, torch.max(mask)={}".format(torch.min(mask), torch.max(mask)) )
+                    print( "mask_rgb.shape : ", mask_rgb.shape )
 
                 #====================================================
                 # 学習処理
@@ -283,58 +280,21 @@ if __name__ == '__main__':
                 # 生成器 の forword 処理
                 #----------------------------------------------------
                 # 学習用データをモデルに流し込む
-                #output = model_G( image )
-                output, output_mask, output_none_act = model_G( image )
+                output = model_G( image )
+                output_vis = torch.max(output, 1)[1].unsqueeze(1)
+                output_vis_rgb = decode_labels_tsr(output_vis)
                 if( args.debug and n_print > 0 ):
                     print( "output.shape :", output.shape )
-                    
-                #----------------------------------------------------
-                # 識別器の更新処理
-                #----------------------------------------------------
-                # 無効化していた識別器 D のネットワークの勾配計算を有効化。
-                for param in model_D.parameters():
-                    param.requires_grad = True
-
-                # 学習用データをモデルに流し込む
-                """
-                d_real = model_D( mask )
-                d_fake = model_D( output.detach() )
-                """
-                d_real = model_D( mask )
-                d_fake = model_D( output_mask.detach() )
-                if( args.debug and n_print > 0 ):
-                    print( "d_real.shape :", d_real.shape )
-                    print( "d_fake.shape :", d_fake.shape )
-
-                # 損失関数を計算する
-                loss_D, loss_D_real, loss_D_fake = loss_adv_fn.forward_D( d_real, d_fake )
-
-                # ネットワークの更新処理
-                optimizer_D.zero_grad()
-                loss_D.backward(retain_graph=True)
-                optimizer_D.step()
-
-                # 無効化していた識別器 D のネットワークの勾配計算を有効化。
-                for param in model_D.parameters():
-                    param.requires_grad = False
+                    print( "output.dtype :", output.dtype )
+                    print( "output_vis.shape :", output_vis.shape )
+                    print( "output_vis_rgb.shape :", output_vis_rgb.shape )
 
                 #----------------------------------------------------
                 # 生成器の更新処理
                 #----------------------------------------------------
                 # 損失関数を計算する
-                """
-                loss_l1 = loss_l1_fn( output, mask )
-                loss_vgg = loss_vgg_fn( output, mask )
                 loss_entropy = loss_entropy_fn( output, mask )
-                loss_bce = loss_bce_fn( output, mask )
-                """
-                loss_l1 = loss_l1_fn( output_mask, mask )
-                loss_vgg = loss_vgg_fn( output_mask, mask )
-                loss_entropy = loss_entropy_fn( output_mask, mask )
-                loss_bce = loss_bce_fn( output_mask, mask )
-
-                loss_adv = loss_adv_fn.forward_G( d_fake )
-                loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
+                loss_G = args.lambda_entropy * loss_entropy
 
                 # ネットワークの更新処理
                 optimizer_G.zero_grad()
@@ -346,42 +306,30 @@ if __name__ == '__main__':
                 #====================================================
                 if( step == 0 or ( step % args.n_diaplay_step == 0 ) ):
                     board_train.add_scalar('G/loss_G', loss_G.item(), step)
-                    board_train.add_scalar('G/loss_l1', loss_l1.item(), step)
-                    board_train.add_scalar('G/loss_vgg', loss_vgg.item(), step)
                     board_train.add_scalar('G/loss_entropy', loss_entropy.item(), step)
-                    board_train.add_scalar('G/loss_bce', loss_bce.item(), step)
-                    board_train.add_scalar('G/loss_adv', loss_adv.item(), step)
+                    print( "step={}, loss_G={:.5f}, loss_entropy={:.5f},".format(step, loss_G, loss_entropy) )
 
-                    board_train.add_scalar('D/loss_D', loss_D.item(), step)
-                    board_train.add_scalar('D/loss_D_real', loss_D_real.item(), step)
-                    board_train.add_scalar('D/loss_D_fake', loss_D_fake.item(), step)
-
-                    print( "step={}, loss_G={:.5f}, loss_l1={:.5f}, loss_vgg={:.5f}, loss_entropy={:.5f}, loss_bce={:.5f}, loss_adv={:.5f}".format(step, loss_G, loss_l1, loss_vgg, loss_entropy, loss_bce, loss_adv) )
-                    print( "step={}, loss_D={:.5f}, loss_D_real={:.5f}, loss_D_fake={:.5f}".format(step, loss_D.item(), loss_D_real.item(), loss_D_fake.item()) )
-
-                    """
+                    zero_tsr = torch.zeros( (image.shape) ).to(device)
                     visuals = [
-                        [image, mask, output],
+                        [ image,    mask,       output_vis      ],
+                        [ zero_tsr, mask_rgb,   output_vis_rgb  ],
                     ]
-                    """
-                    visuals = [
-                        [image, mask, output, output_mask, output_none_act],
-                    ]
+                    if( args.debug and n_print > 0 ):
+                        for col, vis_item_row in enumerate(visuals):
+                            for row, vis_item in enumerate(vis_item_row):
+                                print("[train] vis_item[{}][{}].shape={} :".format(row,col,vis_item.shape) )
+
                     board_add_images(board_train, 'train', visuals, step+1)
 
                 #=====================================
                 # 検証用データの処理
                 #=====================================
-                if( step == 0 or ( step % args.n_display_valid_step == 0 ) ):
+                if( step != 0 and (step % args.n_display_valid_step == 0) ):
                     loss_G_total = 0
-                    loss_l1_total, loss_vgg_total = 0, 0
-                    loss_entropy_total, loss_bce_total = 0, 0
-                    loss_adv_total = 0
-                    loss_D_total, loss_D_real_total, loss_D_fake_total = 0, 0, 0
+                    loss_entropy_total = 0
                     n_valid_loop = 0
-                    for iter, inputs in enumerate( tqdm(dloader_valid) ):
+                    for iter, inputs in enumerate( tqdm(dloader_valid, desc = "eval iters") ):
                         model_G.eval()            
-                        model_D.eval()    
 
                         # 一番最後のミニバッチループで、バッチサイズに満たない場合は無視する（後の計算で、shape の不一致をおこすため）
                         if inputs["image"].shape[0] != args.batch_size_valid:
@@ -391,84 +339,49 @@ if __name__ == '__main__':
                         image_name = inputs["image_name"]
                         image = inputs["image"].to(device)
                         mask = inputs["mask"].to(device)
+                        mask = mask.unsqueeze(1)
+                        mask_rgb = decode_labels_tsr(mask)
 
                         #====================================================
                         # 推論処理
                         #====================================================
                         # 生成器
                         with torch.no_grad():
-                            #output = model_G( image )
-                            output, output_mask, output_none_act = model_G( image )
-
-                        # 識別器
-                        with torch.no_grad():
-                            """
-                            d_real = model_D( mask )
-                            d_fake = model_D( output.detach() )
-                            """
-                            d_real = model_D( mask )
-                            d_fake = model_D( output_mask.detach() )
+                            output = model_G( image )
+                            output_vis = torch.max(output, 1)[1].unsqueeze(1)
+                            output_vis_rgb = decode_labels_tsr(output_vis)
 
                         #----------------------------------------------------
                         # 損失関数の計算
                         #----------------------------------------------------
                         # 生成器
-                        """
-                        loss_l1 = loss_l1_fn( output, mask )
                         loss_entropy = loss_entropy_fn( output, mask )
-                        loss_bce = loss_bce_fn( output, mask )
-                        """
-                        loss_l1 = loss_l1_fn( output_mask, mask )
-                        loss_entropy = loss_entropy_fn( output_mask, mask )
-                        loss_bce = loss_bce_fn( output_mask, mask )
-                        loss_adv = loss_adv_fn.forward_G( d_fake )
-                        loss_G = args.lambda_l1 * loss_l1 + args.lambda_vgg * loss_vgg + args.lambda_enpropy * loss_entropy + args.lambda_bce * loss_bce + args.lambda_adv * loss_adv
- 
-                        # 識別器
-                        loss_D, loss_D_real, loss_D_fake = loss_adv_fn.forward_D( d_real, d_fake )
+                        loss_G = args.lambda_entropy * loss_entropy
 
                         # total
                         loss_G_total += loss_G
-                        loss_l1_total += loss_l1
-                        loss_vgg_total += loss_vgg
                         loss_entropy_total += loss_entropy
-                        loss_bce_total += loss_bce
-                        loss_adv_total += loss_adv
 
-                        loss_D_total += loss_D
-                        loss_D_real_total += loss_D_real
-                        loss_D_fake_total += loss_D_fake
-
-                        # 
-                        if( iter <= args.batch_size ):
-                            """
+                        #----------------------------------------------------
+                        # 生成画像表示
+                        #----------------------------------------------------
+                        if( iter <= args.n_display_valid ):
+                            zero_tsr = torch.zeros( (image.shape) ).to(device)
                             visuals = [
-                                [image, mask, output],
-                            ]
-                            """
-                            visuals = [
-                                [image, mask, output, output_mask, output_none_act],
+                                [ image,    mask,       output_vis      ],
+                                [ zero_tsr, mask_rgb,   output_vis_rgb  ],
                             ]
                             board_add_images(board_valid, 'valid/{}'.format(iter), visuals, step+1)
 
                         n_valid_loop += 1
 
                     #----------------------------------------------------
-                    # 表示処理
+                    # loss 値表示
                     #----------------------------------------------------
                     # 生成器
                     board_valid.add_scalar('G/loss_G', loss_G_total.item()/n_valid_loop, step)
-                    board_valid.add_scalar('G/loss_l1', loss_l1_total.item()/n_valid_loop, step)
-                    board_valid.add_scalar('G/loss_vgg', loss_vgg_total.item()/n_valid_loop, step)
                     board_valid.add_scalar('G/loss_entropy', loss_entropy_total.item()/n_valid_loop, step)
-                    board_valid.add_scalar('G/loss_bce', loss_bce_total.item()/n_valid_loop, step)
-                    board_valid.add_scalar('G/loss_adv', loss_adv_total.item()/n_valid_loop, step)
-
-                    # 識別器
-                    board_valid.add_scalar('D/loss_D', loss_D_total.item()/n_valid_loop, step)
-                    board_valid.add_scalar('D/loss_D_real', loss_D_real_total.item()/n_valid_loop, step)
-                    board_valid.add_scalar('D/loss_D_fake', loss_D_fake_total.item()/n_valid_loop, step)
-
+                
                 step += 1
                 n_print -= 1
 
@@ -500,20 +413,21 @@ if __name__ == '__main__':
 
         # 生成器 G の 推論処理
         with torch.no_grad():
-            #output = model_G( image )
-            output, output_mask, output_none_act = model_G( image )
-            y_pred_test.append( ( (output_mask[0].detach().cpu().numpy()) * 255 ).astype('uint8') )
-            #y_pred_test.append( ( (output[0].detach().cpu().numpy() + 1.0) * 0.5 * 255 ).astype('uint8') )
+            output = model_G( image )
+            output_vis = torch.max(output, 1)[1].unsqueeze(1)
+            output_vis_rgb = decode_labels_tsr(output_vis)
+            y_pred_test.append( ( (output_vis[0].detach().cpu().numpy()) ).astype('uint8') )
 
         n_display_images = 50
         if( step <= n_display_images ):
             visuals = [
-                [image, output],
+                [image, output_vis, output_vis_rgb],
             ]
             board_add_images(board_test, 'test/{}'.format(step), visuals, -1 )
 
-            save_image_w_norm( image, os.path.join( args.results_dir, args.exper_name, "test", "images", image_name[0] ) )
-            save_image_w_norm( output, os.path.join( args.results_dir, args.exper_name, "test", "masks", image_name[0] ) )
+            save_image_w_norm( image, os.path.join( args.results_dir, args.exper_name, "images", image_name[0] ) )
+            save_image_w_norm( output_vis, os.path.join( args.results_dir, args.exper_name, "masks", image_name[0] ) )
+            save_image_w_norm( output_vis_rgb, os.path.join( args.results_dir, args.exper_name, "masks_vis", image_name[0] ) )
 
         if( step >= args.n_samplings ):
             break
@@ -552,7 +466,7 @@ if __name__ == '__main__':
             class_ids.append(label)
 
             # ラベル別画像の保存
-            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "test", "masks", name.split(".png")[0] + "_{}.png".format(label) ), y_pred_test_org ) 
+            cv2.imwrite( os.path.join( args.results_dir, args.exper_name, "masks_split", name.split(".jpg")[0] + "_{}.jpg".format(label) ), y_pred_test_org ) 
             if( j >= len(test_mask_splits) - 1):
                 break
 
